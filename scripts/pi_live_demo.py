@@ -24,7 +24,7 @@ from modules.catface.cat_classifier import CatClassifier  # noqa: E402
 
 def rss_mb() -> float:
     try:
-        with open("/proc/self/statm", "r", encoding="utf-8") as f:
+        with open("/proc/self/statm", encoding="utf-8") as f:
             return int(f.read().split()[1]) * 4096 / 1024 / 1024
     except Exception:
         return -1.0
@@ -88,7 +88,6 @@ def main() -> int:
         picam2.stop()
         picam2.close()
 
-    total = sum(grabs) + sum(infers)
     print("-" * 48)
     print(f"帧数 {len(grabs)} | 猫 {cat_count} / 非猫 {len(grabs) - cat_count}")
     print(f"平均 取帧 {np.mean(grabs):.1f} ms + 推理 {np.mean(infers):.1f} ms "

@@ -34,7 +34,7 @@ from modules.catface.cat_classifier import CatClassifier  # noqa: E402
 def rss_mb() -> float:
     """当前进程 RSS（MB）。Linux 读 /proc，其它平台返回 -1。"""
     try:
-        with open("/proc/self/statm", "r", encoding="utf-8") as f:
+        with open("/proc/self/statm", encoding="utf-8") as f:
             pages = int(f.read().split()[1])
         return pages * os.sysconf("SC_PAGE_SIZE") / 1024 / 1024
     except Exception:

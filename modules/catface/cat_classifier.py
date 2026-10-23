@@ -132,7 +132,7 @@ def _cli() -> int:
     img = Image.open(args.image)
 
     probs = clf.predict_proba(img)
-    is_cat, conf = bool(probs[0] >= 0.5), float(probs[0])
+    is_cat = bool(probs[0] >= 0.5)
     print(f"图片: {args.image}")
     print(f"结果: {CLASSES[0] if is_cat else CLASSES[1]}  "
           f"(p_cat={probs[0]:.4f}, p_notcat={probs[1]:.4f})")

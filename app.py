@@ -596,6 +596,8 @@ def feed_cat():
         return jsonify({'success': False, 'message': 'cat_id 不合法'}), 400
 
     user_name = _clean_str(req_data.get('user_name'), 32) or '匿名用户'
+    amount = _to_int(req_data.get('amount')) or 1
+    amount = max(1, min(amount, 100))
     
     data = load_data()
     
@@ -607,13 +609,14 @@ def feed_cat():
     if not target_cat:
         return jsonify({'success': False, 'message': '猫咪不存在'}), 404
 
-    target_cat['feed_count'] = int(target_cat.get('feed_count', 0) or 0) + 1
+    target_cat['feed_count'] = int(target_cat.get('feed_count', 0) or 0) + amount
     
     # 记录投喂日志
     log = {
         'id': _next_id(data['feed_logs']),
         'cat_id': cat_id,
         'user_name': user_name,
+        'amount': amount,
         'time': datetime.now().isoformat(timespec='seconds')
     }
     data['feed_logs'].append(log)
@@ -637,7 +640,8 @@ def feed_cat():
         'success': True,
         'message': f'投喂成功！{user_name} 投喂了 {target_cat.get("name", "猫咪")}',
         'cat_id': cat_id,
-        'feed_count': target_cat['feed_count']
+        'feed_count': target_cat['feed_count'],
+        'amount': amount
     })
 
 @app.route('/api/feed-logs')

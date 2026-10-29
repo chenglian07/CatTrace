@@ -44,6 +44,7 @@ STATE = {
     "p_cat": 0.0,
     "fps": 0.0,
     "frames": 0,
+    "luma": 0.0,
     "history": deque(maxlen=30),
     "jpeg": b"",
     "raw": None,
@@ -157,6 +158,7 @@ def capture_loop(args, clf, frame_fn, close_fn):
 
             probs = clf.predict_proba(rgb)
             label = "cat" if probs[0] >= args.threshold else "notcat"
+            luma = float(rgb.mean())
 
             now = time.perf_counter()
             dt = now - last
@@ -172,6 +174,7 @@ def capture_loop(args, clf, frame_fn, close_fn):
                 STATE["p_cat"] = float(probs[0])
                 STATE["fps"] = fps_smooth
                 STATE["frames"] += 1
+                STATE["luma"] = luma
                 STATE["jpeg"] = jpg
                 STATE["raw"] = rgb
                 STATE["history"].appendleft(
@@ -210,6 +213,9 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
  .cat{color:#2ecc71;font-weight:600}.notcat{color:#e74c3c;font-weight:600}
  button{background:#2f6fed;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer}
  .hint{font-size:12px;color:#8b93a7;padding:0 16px 16px;line-height:1.6}
+ .warn{display:none}
+ .warn.on{display:block;margin:0 16px 12px;padding:10px 14px;border-radius:8px;
+          background:#4a1d1d;border:1px solid #a33;color:#ffd9d9;font-size:13px}
 </style></head><body>
 <header>
   <h1>猫识别 · 摄像头实时验证</h1>
@@ -217,10 +223,13 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <span class="pill">p_cat：<span id="p">--</span></span>
   <span class="pill"><span id="fps">--</span> FPS</span>
   <span class="pill">帧数 <span id="n">0</span></span>
+  <span class="pill">画面亮度 <span id="lum">--</span></span>
+  <span class="pill" id="link">●</span>
   <button onclick="snap()">保存快照</button>
 </header>
+<div id="warn"></div>
 <div class="wrap">
-  <div class="left"><img id="s" src="/stream"></div>
+  <div class="left"><img id="s" alt="等待画面…"></div>
   <div class="right"><table id="hist"></table></div>
 </div>
 <div class="hint">
@@ -228,6 +237,27 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
  若画面上下颠倒，用 <code>--rotate 180</code> 启动。快照存在树莓派的 /dev/shm/shots。
 </div>
 <script>
+let lastFrameTs = 0, lastOk = Date.now();
+const img = document.getElementById('s');
+
+// 用轮询单帧代替 MJPEG 长连接：连接断了能自己恢复，不会永远卡在旧帧上
+function pull(){
+  const t = Date.now();
+  const url = '/frame.jpg?t=' + t;
+  const probe = new Image();
+  probe.onload = () => {
+    img.src = url;
+    lastOk = Date.now();
+    document.getElementById('link').textContent = '● 在线';
+    document.getElementById('link').style.color = '#2ecc71';
+  };
+  probe.onerror = () => {
+    document.getElementById('link').textContent = '● 断线重连中';
+    document.getElementById('link').style.color = '#e74c3c';
+  };
+  probe.src = url;
+}
+
 async function tick(){
   try{
     const r = await fetch('/stats'); const d = await r.json();
@@ -237,13 +267,29 @@ async function tick(){
     document.getElementById('p').textContent = d.p_cat.toFixed(4);
     document.getElementById('fps').textContent = d.fps.toFixed(1);
     document.getElementById('n').textContent = d.frames;
+    document.getElementById('lum').textContent = d.luma.toFixed(0);
+
+    const w = document.getElementById('warn');
+    if (d.luma < 25) {
+      w.textContent = '⚠️ 画面几乎全黑（亮度 ' + d.luma.toFixed(0) + '/255）：镜头可能被挡住了，或者手机贴太近把镜头盖住了。';
+      w.className = 'warn on';
+    } else if (d.luma > 235) {
+      w.textContent = '⚠️ 画面过曝（亮度 ' + d.luma.toFixed(0) + '/255）：手机屏幕太近/太亮，往后退一点。';
+      w.className = 'warn on';
+    } else {
+      w.className = 'warn';
+    }
+
     document.getElementById('hist').innerHTML = d.history.map(h =>
       `<tr><td>${h.t.toFixed(1)}s</td><td class="${h.label}">${h.label.toUpperCase()}</td><td>${h.p_cat.toFixed(4)}</td></tr>`
     ).join('');
   }catch(e){}
 }
 async function snap(){ await fetch('/snapshot', {method:'POST'}); alert('已保存到 /dev/shm/shots'); }
-setInterval(tick, 1000); tick();
+
+setInterval(pull, 250);      // 画面 4 次/秒
+setInterval(tick, 1000);     // 数字 1 次/秒
+pull(); tick();
 </script></body></html>"""
 
 
@@ -267,6 +313,7 @@ class Handler(BaseHTTPRequestHandler):
                     "p_cat": STATE["p_cat"],
                     "fps": round(STATE["fps"], 2),
                     "frames": STATE["frames"],
+                    "luma": round(STATE["luma"], 1),
                     "history": list(STATE["history"]),
                 }
             body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -276,7 +323,17 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        elif self.path == "/stream":
+        elif self.path.startswith(("/frame.jpg", "/snapshot.jpg")):
+            with STATE_LOCK:
+                jpg = STATE["jpeg"]
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(jpg)))
+            self.send_header("Cache-Control", "no-store, max-age=0")
+            self.end_headers()
+            self.wfile.write(jpg)
+
+        elif self.path.startswith("/stream"):
             self.send_response(200)
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
             self.end_headers()
@@ -293,15 +350,6 @@ class Handler(BaseHTTPRequestHandler):
                     time.sleep(0.15)
             except (BrokenPipeError, ConnectionResetError):
                 pass
-
-        elif self.path == "/snapshot.jpg":
-            with STATE_LOCK:
-                jpg = STATE["jpeg"]
-            self.send_response(200)
-            self.send_header("Content-Type", "image/jpeg")
-            self.send_header("Content-Length", str(len(jpg)))
-            self.end_headers()
-            self.wfile.write(jpg)
 
         else:
             self.send_error(404)

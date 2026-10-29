@@ -3011,6 +3011,197 @@ function showLogin() {
 }
 
 // ============================================
+// 实时直播（树莓派摄像头）
+// ============================================
+
+/**
+ * 把直播间里的占位表情换成树莓派的真实画面。
+ *
+ * 浏览器请求同源 /api/live/info，拿到 /api/live/stream（Flask 代理到 Pi 的 MJPEG），
+ * 再把地址挂到 <img> 上。连不上就回退到原来的表情动画，并显示"摄像头未连接"。
+ *
+ * 不配 CATTRACE_LIVE_URL 时后端返回 enabled=false，本模块等同于不启用。
+ */
+const LiveStream = {
+    img: null,
+    emoji: null,
+    offline: null,
+    offlineText: null,
+    retryBtn: null,
+    info: null,
+    retry: 0,
+    retryTimer: null,
+    statsTimer: null,
+    liveBadge: null,
+    lastStreamFrames: null,
+    lastFrameChangeAt: 0,
+
+    async init() {
+        this.img = document.getElementById('liveStream');
+        this.emoji = document.getElementById('liveCatEmoji');
+        this.offline = document.getElementById('liveOffline');
+        this.offlineText = document.getElementById('liveOfflineText');
+        this.retryBtn = document.getElementById('liveRetry');
+        this.liveBadge = document.getElementById('liveBadge');
+        if (!this.img) return;
+
+        if (this.retryBtn) {
+            this.retryBtn.addEventListener('click', () => {
+                this.retry = 0;
+                this.connect();
+            });
+        }
+        this.img.addEventListener('load', () => {
+            if (this.img.naturalWidth > 0) {
+                this.showLive();
+                this.retry = 0;
+            }
+        });
+        this.img.addEventListener('error', () => this.showOffline('摄像头断流'));
+
+        await this.connect();
+    },
+
+    async connect() {
+        if (this.retryTimer) {
+            clearTimeout(this.retryTimer);
+            this.retryTimer = null;
+        }
+        let info = null;
+        try {
+            const r = await fetch('/api/live/info', { cache: 'no-store' });
+            info = await r.json();
+        } catch (e) {
+            info = null;
+        }
+        this.info = info;
+        if (!info || !info.enabled) {
+            // 后端没配直播地址：保持原来的占位动画，不打扰用户
+            this.showPlaceholder();
+            return;
+        }
+        // 加时间戳，避免浏览器复用已断开的连接
+        this.lastStreamFrames = null;
+        this.lastFrameChangeAt = Date.now();
+        this.setBadge('⚪ 连接中', 'connecting');
+        this.img.src = info.stream_url + '?t=' + Date.now();
+        this.img.hidden = false;
+        // 6 秒还没出画面就认为连不上
+        this.retryTimer = setTimeout(() => {
+            if (!(this.img.complete && this.img.naturalWidth > 0)) {
+                this.showOffline('摄像头无响应');
+            }
+        }, 6000);
+        this.startStats();
+    },
+
+    showLive() {
+        this.img.hidden = false;
+        this.setBadge('🔴 直播中', 'live');
+        if (this.emoji) this.emoji.style.display = 'none';
+        if (this.offline) this.offline.hidden = true;
+        if (this.retryTimer) {
+            clearTimeout(this.retryTimer);
+            this.retryTimer = null;
+        }
+        const dot = document.querySelector('.ai-verify-pulse');
+        if (dot) dot.style.background = '#2ecc71';
+    },
+
+    showOffline(reason) {
+        this.lastStreamFrames = null;
+        this.lastFrameChangeAt = 0;
+        this.setBadge('⚪ 已断开', 'offline');
+        if (this.emoji) this.emoji.style.display = '';
+        this.img.hidden = true;
+        const fpsEl = document.getElementById('liveFps');
+        const streamFpsEl = document.getElementById('liveStreamFps');
+        if (fpsEl) fpsEl.textContent = '--';
+        if (streamFpsEl) streamFpsEl.textContent = '--';
+        if (this.offline) this.offline.hidden = false;
+        if (this.offlineText) {
+            this.offlineText.textContent = '\u{1F4E1} ' + (reason || '摄像头未连接');
+        }
+        this.stopStats();
+        const dot = document.querySelector('.ai-verify-pulse');
+        if (dot) dot.style.background = '#e74c3c';
+        // 指数退避重连，最长 30 秒
+        this.retry += 1;
+        const wait = Math.min(30000, 2000 * Math.pow(2, Math.min(this.retry - 1, 4)));
+        if (this.retryTimer) clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => this.connect(), wait);
+    },
+
+    showPlaceholder() {
+        this.stopStats();
+        this.setBadge('⚪ 未启用', 'offline');
+        this.img.hidden = true;
+        if (this.emoji) this.emoji.style.display = '';
+        if (this.offline) this.offline.hidden = true;
+        const fpsEl = document.getElementById('liveFps');
+        const streamFpsEl = document.getElementById('liveStreamFps');
+        if (fpsEl) fpsEl.textContent = '--';
+        if (streamFpsEl) streamFpsEl.textContent = '--';
+    },
+
+    startStats() {
+        if (!this.info || !this.info.stats_url) return;
+        this.stopStats();
+        const tick = async () => {
+            try {
+                const r = await fetch(this.info.stats_url, { cache: 'no-store' });
+                if (!r.ok) return;
+                const d = await r.json();
+                this.renderStats(d);
+            } catch (e) { /* 静默：识别状态不是必需品 */ }
+        };
+        tick();
+        this.statsTimer = setInterval(tick, 1000);
+    },
+
+    renderStats(d) {
+        // /stats 的 stream_frames 只会在采集线程产出新画面时增长。连续不增长说明流已冻结。
+        if (typeof d.stream_frames === 'number') {
+            const now = Date.now();
+            if (this.lastStreamFrames === null) {
+                this.lastStreamFrames = d.stream_frames;
+                this.lastFrameChangeAt = now;
+            } else if (d.stream_frames !== this.lastStreamFrames) {
+                this.lastStreamFrames = d.stream_frames;
+                this.lastFrameChangeAt = now;
+            } else if (this.lastFrameChangeAt && now - this.lastFrameChangeAt > 5000) {
+                this.showOffline('画面已冻结');
+                return;
+            }
+        }
+
+        const badge = document.getElementById('aiVerifyBadge');
+        if (!badge || typeof d.p_cat !== 'number') return;
+        const pct = Math.round(d.p_cat * 100);
+        const isCat = d.label === 'cat';
+        badge.innerHTML = '<span class="ai-verify-pulse"></span> ' +
+            (isCat ? '\u{1F431} \u8bc6\u522b\u5230\u732b ' + pct + '%' : '\u{1F43E} \u672a\u68c0\u6d4b\u5230\u732b ' + (100 - pct) + '%');
+        const fpsEl = document.getElementById('liveFps');
+        if (fpsEl && typeof d.fps === 'number') fpsEl.textContent = d.fps.toFixed(1);
+        const streamFpsEl = document.getElementById('liveStreamFps');
+        if (streamFpsEl && typeof d.stream_fps === 'number') streamFpsEl.textContent = d.stream_fps.toFixed(1);
+    },
+
+    setBadge(text, state) {
+        if (!this.liveBadge) return;
+        this.liveBadge.textContent = text;
+        this.liveBadge.dataset.state = state;
+    },
+
+    stopStats() {
+        if (this.statsTimer) {
+            clearInterval(this.statsTimer);
+            this.statsTimer = null;
+        }
+    }
+};
+
+// ============================================
 // 页面初始化
 // ============================================
 
@@ -3061,6 +3252,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (path === '/' || path === '/index.html') {
         // 直播间页面
         LiveRoom.init();
+        // 树莓派实时画面（独立于 LiveRoom，不配也能正常显示占位）
+        LiveStream.init();
     } else if (path === '/cats' || path === '/cats.html' || path === '/cats/') {
         // 猫咪档案页面
         CatsPage.init();

@@ -221,6 +221,7 @@ python scripts/verify_catvision.py
 
 | 文档 | 内容 |
 |------|------|
+| [docs/live-stream.md](./docs/live-stream.md) | 树莓派摄像头接入网页直播间的完整链路与部署说明 |
 | [docs/modules/monitoring.md](./docs/modules/monitoring.md) | 实时直播与在线巡检 |
 | [docs/modules/feeding.md](./docs/modules/feeding.md) | 远程投喂与投喂追溯 |
 | [docs/modules/cat-profile.md](./docs/modules/cat-profile.md) | 猫咪档案与个体化救助 |

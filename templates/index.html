@@ -56,15 +56,23 @@
 
         <!-- ========== 实时直播区 ========== -->
         <section class="live-feed" id="liveSection">
-            <div class="live-badge">🔴 直播中</div>
+            <div class="live-badge" id="liveBadge" data-state="connecting">⚪ 连接中</div>
             <div class="live-viewer-count">👁 <span id="viewerCount">42</span> 人在看</div>
             <div class="live-camera" id="liveCamera">
+                <!-- 真实画面：由 /api/live/info 返回地址后挂上去；失败时保留下面的占位动画 -->
+                <img class="live-stream" id="liveStream" alt="树莓派实时画面" hidden>
                 <div class="live-cat-emoji" id="liveCatEmoji" onclick="bounceCat()">🐱</div>
+                <div class="live-offline" id="liveOffline" hidden>
+                    <span id="liveOfflineText">📡 摄像头未连接</span>
+                    <button class="live-retry" id="liveRetry" type="button">重试</button>
+                </div>
             </div>
             <div class="live-env-bar">
                 <span>🌡 温度: <strong id="envTemp">26</strong>°C</span>
                 <span>💧 湿度: <strong id="envHumidity">58</strong>%</span>
                 <span>🍖 今日投喂: <strong id="envTodayFeed">12</strong> 次</span>
+                <span>🎬 视频: <strong id="liveStreamFps">--</strong> fps</span>
+                <span>🎞 识别: <strong id="liveFps">--</strong> fps</span>
                 <span class="ai-verify-badge" id="aiVerifyBadge">
                     <span class="ai-verify-pulse"></span> AI 猫脸监控中
                 </span>

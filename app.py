@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 # 导入自学习模块
 from self_learning import SelfLearningEngine
+from live_proxy import register as register_live_proxy
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1561,6 +1562,9 @@ def post_learning_train():
     learning_engine._save_to_data(data)
     save_data(data)
     return jsonify(result)
+
+# 实时直播：浏览器同源代理到树莓派 MJPEG（未配 CATTRACE_LIVE_URL 时自动关闭）
+register_live_proxy(app)
 
 if __name__ == '__main__':
     init_data()

@@ -7,12 +7,12 @@
     # 树莓派上（CSI 摄像头）
     ssh pi-cat
     cd ~/catvision && source ~/venvs/catvision/bin/activate
-    python scripts/pi_phone_demo.py --rotate 180 --port 8000
+    python scripts/pi_phone_demo.py --rotate 180 --port 8000 --stream-fps 8 --fps 2 --threads 1
 
     # 然后在这台电脑浏览器打开
     http://192.168.31.252:8000/
 
-页面里：左边是实时画面（带判定和置信度），右边是最近 30 帧的记录。
+页面里：左边是实时视频，右边是最近 30 次推理结果；两项互不阻塞。
 点「保存快照」会把当前帧存到 /dev/shm（内存盘，不写 SD 卡）。
 
 没有摄像头时也能验证链路本身（拿图片当视频源）：
@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -43,64 +43,21 @@ STATE = {
     "label": "starting",
     "p_cat": 0.0,
     "fps": 0.0,
-    "frames": 0,
     "luma": 0.0,
+    "frames": 0,
+    "stream_fps": 0.0,
+    "stream_frames": 0,
     "history": deque(maxlen=30),
     "jpeg": b"",
     "raw": None,
     "started": time.time(),
 }
+# 采集线程发布新帧，每个直播连接只在该帧真正到达时写出，避免固定轮询拖慢直播。
+FRAME_READY = threading.Condition(STATE_LOCK)
 
 
 def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
-
-
-def get_font(size: int):
-    """找一个能显示中文的字体，找不到就退回默认字体。"""
-    for p in (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "C:/Windows/Fonts/msyh.ttc",
-        "C:/Windows/Fonts/arialbd.ttf",
-    ):
-        try:
-            return ImageFont.truetype(p, size)
-        except Exception:
-            continue
-    return ImageFont.load_default()
-
-
-def annotate(rgb: np.ndarray, label: str, p_cat: float, fps: float) -> Image.Image:
-    """在画面上画判定条：顶部大字 + 置信度条。"""
-    img = Image.fromarray(rgb)
-    w, h = img.size
-    draw = ImageDraw.Draw(img, "RGBA")
-    font = get_font(max(18, h // 12))
-    small = get_font(max(12, h // 26))
-
-    is_cat = label == "cat"
-    color = (46, 204, 113) if is_cat else (231, 76, 60)
-    text = "CAT" if is_cat else "NOT CAT"
-
-    # 顶部条
-    draw.rectangle([0, 0, w, int(h * 0.16)], fill=(0, 0, 0, 170))
-    draw.text((12, int(h * 0.02)), text, font=font, fill=color + (255,))
-    draw.text((12, int(h * 0.115)), f"p_cat={p_cat:.3f}  {fps:.1f} FPS", font=small,
-              fill=(220, 220, 220, 255))
-
-    # 右侧置信度条
-    bar_w = max(10, w // 28)
-    bx = w - bar_w - 10
-    top, bottom = int(h * 0.20), int(h * 0.94)
-    draw.rectangle([bx, top, bx + bar_w, bottom], fill=(0, 0, 0, 120))
-    frac = max(0.0, min(1.0, p_cat))
-    fill_h = int((bottom - top) * frac)
-    draw.rectangle([bx, bottom - fill_h, bx + bar_w, bottom], fill=color + (255,))
-    # 0.5 阈值刻度线
-    mid = bottom - int((bottom - top) * 0.5)
-    draw.line([bx - 6, mid, bx + bar_w + 2, mid], fill=(255, 255, 255, 200), width=2)
-    return img
 
 
 def encode(img: Image.Image, quality: int = 80) -> bytes:
@@ -142,11 +99,14 @@ def open_camera(args):
     return frame, close
 
 
-def capture_loop(args, clf, frame_fn, close_fn):
+def capture_loop(args, frame_fn, close_fn):
+    """持续采集并推流；采集频率与 AI 推理频率解耦。"""
+    frame_interval = 1.0 / args.stream_fps if args.stream_fps > 0 else 0.0
     fps_smooth = 0.0
     last = time.perf_counter()
     try:
         while True:
+            started = time.perf_counter()
             rgb = frame_fn()
 
             if args.rotate == 180:
@@ -156,9 +116,8 @@ def capture_loop(args, clf, frame_fn, close_fn):
             elif args.rotate == 270:
                 rgb = np.rot90(rgb, k=1)
 
-            probs = clf.predict_proba(rgb)
-            label = "cat" if probs[0] >= args.threshold else "notcat"
-            luma = float(rgb.mean())
+            # 网页直播间始终拿原始画面，不把调试标注烧进视频。
+            jpg = encode(Image.fromarray(rgb), quality=args.jpeg_quality)
 
             now = time.perf_counter()
             dt = now - last
@@ -166,33 +125,70 @@ def capture_loop(args, clf, frame_fn, close_fn):
             if dt > 0:
                 fps_smooth = 0.9 * fps_smooth + 0.1 * (1.0 / dt) if fps_smooth else 1.0 / dt
 
-            img = annotate(rgb, label, float(probs[0]), fps_smooth)
-            jpg = encode(img)
-
-            with STATE_LOCK:
-                STATE["label"] = label
-                STATE["p_cat"] = float(probs[0])
-                STATE["fps"] = fps_smooth
-                STATE["frames"] += 1
-                STATE["luma"] = luma
-                STATE["jpeg"] = jpg
+            with FRAME_READY:
                 STATE["raw"] = rgb
-                STATE["history"].appendleft(
-                    {
-                        "t": round(time.time() - STATE["started"], 2),
-                        "label": label,
-                        "p_cat": round(float(probs[0]), 4),
-                    }
-                )
+                STATE["jpeg"] = jpg
+                STATE["stream_frames"] += 1
+                STATE["stream_fps"] = fps_smooth
+                FRAME_READY.notify_all()
 
-            if STATE["frames"] % 10 == 0:
-                log(f"#{STATE['frames']:4d} {label:6s} p_cat={probs[0]:.4f} {fps_smooth:.1f} FPS")
-
-            time.sleep(max(0.0, args.interval - (time.perf_counter() - now)))
+            time.sleep(max(0.0, frame_interval - (time.perf_counter() - started)))
     except KeyboardInterrupt:
-        log("中断")
+        log("采集中断")
+    except Exception as exc:
+        log(f"采集线程退出：{exc}")
     finally:
         close_fn()
+
+
+def inference_loop(args, clf):
+    """按推理帧率读取最新画面，分类结果不会阻塞直播。"""
+    fps_smooth = 0.0
+    last = time.perf_counter()
+    while True:
+        started = time.perf_counter()
+        with STATE_LOCK:
+            rgb = STATE["raw"]
+        if rgb is None:
+            time.sleep(0.1)
+            continue
+
+        try:
+            probs = clf.predict_proba(rgb)
+        except Exception as exc:
+            log(f"推理失败：{exc}")
+            time.sleep(1.0)
+            continue
+
+        p_cat = float(probs[0])
+        label = "cat" if p_cat >= args.threshold else "notcat"
+        luma = float(rgb.mean())
+
+        now = time.perf_counter()
+        dt = now - last
+        last = now
+        if dt > 0:
+            fps_smooth = 0.9 * fps_smooth + 0.1 * (1.0 / dt) if fps_smooth else 1.0 / dt
+
+        with STATE_LOCK:
+            STATE["label"] = label
+            STATE["p_cat"] = p_cat
+            STATE["fps"] = fps_smooth
+            STATE["luma"] = luma
+            STATE["frames"] += 1
+            STATE["history"].appendleft(
+                {
+                    "t": round(time.time() - STATE["started"], 2),
+                    "label": label,
+                    "p_cat": round(p_cat, 4),
+                }
+            )
+            frame_no = STATE["frames"]
+
+        if frame_no % 10 == 0:
+            log(f"#{frame_no:4d} {label:6s} p_cat={p_cat:.4f} {fps_smooth:.1f} FPS")
+
+        time.sleep(max(0.0, args.interval - (time.perf_counter() - started)))
 
 
 PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
@@ -213,23 +209,18 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
  .cat{color:#2ecc71;font-weight:600}.notcat{color:#e74c3c;font-weight:600}
  button{background:#2f6fed;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer}
  .hint{font-size:12px;color:#8b93a7;padding:0 16px 16px;line-height:1.6}
- .warn{display:none}
- .warn.on{display:block;margin:0 16px 12px;padding:10px 14px;border-radius:8px;
-          background:#4a1d1d;border:1px solid #a33;color:#ffd9d9;font-size:13px}
 </style></head><body>
 <header>
   <h1>猫识别 · 摄像头实时验证</h1>
   <span class="pill">判定：<span id="lab">--</span></span>
   <span class="pill">p_cat：<span id="p">--</span></span>
-  <span class="pill"><span id="fps">--</span> FPS</span>
-  <span class="pill">帧数 <span id="n">0</span></span>
-  <span class="pill">画面亮度 <span id="lum">--</span></span>
-  <span class="pill" id="link">●</span>
+  <span class="pill">视频 <span id="stream-fps">--</span> FPS</span>
+  <span class="pill">识别 <span id="fps">--</span> FPS</span>
+  <span class="pill">识别帧数 <span id="n">0</span></span>
   <button onclick="snap()">保存快照</button>
 </header>
-<div id="warn"></div>
 <div class="wrap">
-  <div class="left"><img id="s" alt="等待画面…"></div>
+  <div class="left"><img id="s" src="/stream"></div>
   <div class="right"><table id="hist"></table></div>
 </div>
 <div class="hint">
@@ -237,27 +228,6 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
  若画面上下颠倒，用 <code>--rotate 180</code> 启动。快照存在树莓派的 /dev/shm/shots。
 </div>
 <script>
-let lastFrameTs = 0, lastOk = Date.now();
-const img = document.getElementById('s');
-
-// 用轮询单帧代替 MJPEG 长连接：连接断了能自己恢复，不会永远卡在旧帧上
-function pull(){
-  const t = Date.now();
-  const url = '/frame.jpg?t=' + t;
-  const probe = new Image();
-  probe.onload = () => {
-    img.src = url;
-    lastOk = Date.now();
-    document.getElementById('link').textContent = '● 在线';
-    document.getElementById('link').style.color = '#2ecc71';
-  };
-  probe.onerror = () => {
-    document.getElementById('link').textContent = '● 断线重连中';
-    document.getElementById('link').style.color = '#e74c3c';
-  };
-  probe.src = url;
-}
-
 async function tick(){
   try{
     const r = await fetch('/stats'); const d = await r.json();
@@ -265,31 +235,16 @@ async function tick(){
     lab.textContent = d.label === 'cat' ? 'CAT（是猫）' : 'NOT CAT（不是猫）';
     lab.className = d.label === 'cat' ? 'cat' : 'notcat';
     document.getElementById('p').textContent = d.p_cat.toFixed(4);
+    document.getElementById('stream-fps').textContent = d.stream_fps.toFixed(1);
     document.getElementById('fps').textContent = d.fps.toFixed(1);
     document.getElementById('n').textContent = d.frames;
-    document.getElementById('lum').textContent = d.luma.toFixed(0);
-
-    const w = document.getElementById('warn');
-    if (d.luma < 25) {
-      w.textContent = '⚠️ 画面几乎全黑（亮度 ' + d.luma.toFixed(0) + '/255）：镜头可能被挡住了，或者手机贴太近把镜头盖住了。';
-      w.className = 'warn on';
-    } else if (d.luma > 235) {
-      w.textContent = '⚠️ 画面过曝（亮度 ' + d.luma.toFixed(0) + '/255）：手机屏幕太近/太亮，往后退一点。';
-      w.className = 'warn on';
-    } else {
-      w.className = 'warn';
-    }
-
     document.getElementById('hist').innerHTML = d.history.map(h =>
       `<tr><td>${h.t.toFixed(1)}s</td><td class="${h.label}">${h.label.toUpperCase()}</td><td>${h.p_cat.toFixed(4)}</td></tr>`
     ).join('');
   }catch(e){}
 }
 async function snap(){ await fetch('/snapshot', {method:'POST'}); alert('已保存到 /dev/shm/shots'); }
-
-setInterval(pull, 250);      // 画面 4 次/秒
-setInterval(tick, 1000);     // 数字 1 次/秒
-pull(); tick();
+setInterval(tick, 1000); tick();
 </script></body></html>"""
 
 
@@ -312,8 +267,10 @@ class Handler(BaseHTTPRequestHandler):
                     "label": STATE["label"],
                     "p_cat": STATE["p_cat"],
                     "fps": round(STATE["fps"], 2),
-                    "frames": STATE["frames"],
                     "luma": round(STATE["luma"], 1),
+                    "frames": STATE["frames"],
+                    "stream_fps": round(STATE["stream_fps"], 2),
+                    "stream_frames": STATE["stream_frames"],
                     "history": list(STATE["history"]),
                 }
             body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -323,33 +280,37 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        elif self.path.startswith(("/frame.jpg", "/snapshot.jpg")):
+        elif self.path == "/stream":
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.end_headers()
+            try:
+                last_frame = -1
+                while True:
+                    with FRAME_READY:
+                        if STATE["stream_frames"] == last_frame:
+                            FRAME_READY.wait(timeout=2.0)
+                        jpg = STATE["jpeg"]
+                        frame_no = STATE["stream_frames"]
+                    if not jpg or frame_no == last_frame:
+                        continue
+                    last_frame = frame_no
+                    self.wfile.write(b"--frame\r\n")
+                    self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                    self.wfile.write(f"Content-Length: {len(jpg)}\r\n\r\n".encode())
+                    self.wfile.write(jpg)
+                    self.wfile.write(b"\r\n")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        elif self.path == "/snapshot.jpg":
             with STATE_LOCK:
                 jpg = STATE["jpeg"]
             self.send_response(200)
             self.send_header("Content-Type", "image/jpeg")
             self.send_header("Content-Length", str(len(jpg)))
-            self.send_header("Cache-Control", "no-store, max-age=0")
             self.end_headers()
             self.wfile.write(jpg)
-
-        elif self.path.startswith("/stream"):
-            self.send_response(200)
-            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-            self.end_headers()
-            try:
-                while True:
-                    with STATE_LOCK:
-                        jpg = STATE["jpeg"]
-                    if jpg:
-                        self.wfile.write(b"--frame\r\n")
-                        self.wfile.write(b"Content-Type: image/jpeg\r\n")
-                        self.wfile.write(f"Content-Length: {len(jpg)}\r\n\r\n".encode())
-                        self.wfile.write(jpg)
-                        self.wfile.write(b"\r\n")
-                    time.sleep(0.15)
-            except (BrokenPipeError, ConnectionResetError):
-                pass
 
         else:
             self.send_error(404)
@@ -376,8 +337,10 @@ def main() -> int:
     ap.add_argument("--source", default="csi", help="csi 或 file:<图片路径>（测试用）")
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
-    ap.add_argument("--fps", type=float, default=5.0, help="推理帧率上限")
-    ap.add_argument("--threads", type=int, default=4)
+    ap.add_argument("--fps", type=float, default=2.0, help="AI 推理帧率上限")
+    ap.add_argument("--stream-fps", type=float, default=8.0, help="实时视频帧率上限")
+    ap.add_argument("--threads", type=int, default=1, help="AI 推理线程数")
+    ap.add_argument("--jpeg-quality", type=int, default=75, help="推流 JPEG 质量")
     ap.add_argument("--rotate", type=int, default=0, choices=(0, 90, 180, 270))
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--port", type=int, default=8000)
@@ -389,10 +352,14 @@ def main() -> int:
     log(f"模型已加载 {args.model}")
 
     frame_fn, close_fn = open_camera(args)
-    worker = threading.Thread(
-        target=capture_loop, args=(args, clf, frame_fn, close_fn), daemon=True
+    capture_worker = threading.Thread(
+        target=capture_loop, args=(args, frame_fn, close_fn), name="camera-stream", daemon=True
     )
-    worker.start()
+    inference_worker = threading.Thread(
+        target=inference_loop, args=(args, clf), name="cat-inference", daemon=True
+    )
+    capture_worker.start()
+    inference_worker.start()
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     log(f"打开 http://<树莓派IP>:{args.port}/ 看实时画面")

@@ -1,0 +1,14 @@
+[Unit]
+Description=CatTrace camera MJPEG and inference service
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/lyx/catvision
+ExecStart=/home/lyx/venvs/catvision/bin/python scripts/pi_phone_demo.py --rotate 180 --port 8000 --stream-fps 8 --fps 2 --threads 1
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

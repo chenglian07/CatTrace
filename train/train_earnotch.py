@@ -14,9 +14,15 @@
     confusion_test.png
     best.pt             最佳权重
 
-注意：当前数据没有耳部 ROI 标注，只能做整图分类。脚本已按"ROI 会来"的方式预埋：
-训练时用较狠的 RandomResizedCrop（scale 0.45~1.0）逼模型只看局部，将来接入
-catface landmarks 裁出的 ROI 时，分布不会差太远。
+注意：当前数据没有耳部 ROI 标注，只能做整图分类。脚本按"ROI 会来"的方式预埋：
+训练时用较狠的 RandomResizedCrop 逼模型只看局部，将来接入 catface landmarks
+裁出的 ROI 时分布不会差太远。
+
+增强策略用 --aug 切换（默认 legacy，与 v0 权重训练时一致，便于复现）：
+    legacy  随机裁剪 scale 0.45~1.0 + 水平翻转 + 旋转 10° + ColorJitter(hue 0.25)
+    v2      随机裁剪 scale 0.65~1.0 + 水平翻转 + 旋转 12°(p=0.7) + 弱色偏
+            + 随机灰度 + 可选 RandomErasing
+数据集默认读 仓库根/dataset_v1，可用 --data 或环境变量 CATTRACE_DATASET 指向别处。
 """
 import argparse
 import csv
@@ -35,8 +41,9 @@ from torchvision import transforms as T
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-DATA = os.path.join(ROOT, "dataset_v1")
-MANIFEST = os.path.join(DATA, "manifest.csv")
+# 数据集不进 Git（体积 + 版权），默认就地读仓库根下的 dataset_v1，
+# 也可用环境变量指向独立的数据盘。
+DATA = os.environ.get("CATTRACE_DATASET") or os.path.join(ROOT, "dataset_v1")
 SPLITS = os.path.join(DATA, "splits")
 
 MEAN = [0.485, 0.456, 0.406]
@@ -47,11 +54,12 @@ STD = [0.229, 0.224, 0.225]
 class CatEarDataset(Dataset):
     """从 splits/<split>/<label>/ 读图，标签由目录名给出。"""
 
-    def __init__(self, split, tf):
+    def __init__(self, split, tf, root=None):
         self.tf = tf
         self.items = []
+        root = root or SPLITS
         for label, name in ((1, "pos"), (0, "neg")):
-            d = os.path.join(SPLITS, split, name)
+            d = os.path.join(root, split, name)
             if not os.path.isdir(d):
                 continue
             for f in sorted(os.listdir(d)):
@@ -59,7 +67,7 @@ class CatEarDataset(Dataset):
                 if os.path.isfile(p):
                     self.items.append((p, label, f))
         if not self.items:
-            raise RuntimeError(f"{split} 为空，检查 {SPLITS}")
+            raise RuntimeError(f"{split} 为空，检查 {root}")
 
     def __len__(self):
         return len(self.items)
@@ -72,22 +80,52 @@ class CatEarDataset(Dataset):
         return x, y, i
 
 
-def build_tf(img, train):
-    if train:
+def build_tf(img, train, aug="legacy", rrc_min=0.45, erase=0.0):
+    """训练/验证的预处理。
+
+    aug="legacy" 是 v0 权重训练时用的配方，保留是为了让旧指标可复现；
+    aug="v2" 收窄了随机裁剪的下限——0.45 会把 55% 的画面裁掉，剪耳缺口只有
+    几十像素，很容易连同整只耳朵一起被裁出框外，等于给正样本贴了个"没有缺口"
+    的标签。其余改动见各分支注释。
+    """
+    if not train:
         return T.Compose([
-            T.RandomResizedCrop(img, scale=(0.45, 1.0), ratio=(0.75, 1.333)),
-            T.RandomHorizontalFlip(0.5),
-            T.RandomRotation(10),
-            T.ColorJitter(0.35, 0.35, 0.25, 0.03),
+            T.Resize(int(img * 1.14)),
+            T.CenterCrop(img),
             T.ToTensor(),
             T.Normalize(MEAN, STD),
         ])
-    return T.Compose([
-        T.Resize(int(img * 1.14)),
-        T.CenterCrop(img),
-        T.ToTensor(),
-        T.Normalize(MEAN, STD),
-    ])
+
+    if aug == "legacy":
+        ops = [
+            T.RandomResizedCrop(img, scale=(0.45, 1.0), ratio=(0.75, 1.333)),
+            T.RandomHorizontalFlip(0.5),
+            T.RandomRotation(10),
+            # hue 0.25 = 色相环 ±45°，橘猫能被转成绿色，对形状任务过头了
+            T.ColorJitter(0.35, 0.35, 0.25, 0.03),
+        ]
+    elif aug == "v2":
+        ops = [
+            T.RandomResizedCrop(img, scale=(rrc_min, 1.0), ratio=(0.8, 1.25),
+                                interpolation=T.InterpolationMode.BICUBIC),
+            # 标签是"有没有缺口"，与朝向无关，水平翻转安全；
+            # 不做垂直翻转——现实里没有倒挂的猫，翻了只是纯噪声
+            T.RandomHorizontalFlip(0.5),
+            # 填猫毛的中性色，避免旋转后四角出现纯黑三角
+            T.RandomApply([T.RandomRotation(12, fill=(124, 116, 104))], p=0.7),
+            T.ColorJitter(0.30, 0.30, 0.20, 0.05),
+            # 夜间/红外摄像头的画面近似灰度，让模型别依赖毛色
+            T.RandomGrayscale(0.08),
+        ]
+    else:
+        raise ValueError(f"未知增强预设：{aug}")
+
+    tail = [T.ToTensor(), T.Normalize(MEAN, STD)]
+    if erase > 0:
+        # 遮挡鲁棒性：真实画面有草丛、栏杆、另一只猫挡住耳朵。
+        # 面积上限压在 10%，再大就可能整只耳朵被抹掉，反而制造噪声标签。
+        tail.append(T.RandomErasing(p=erase, scale=(0.02, 0.10), ratio=(0.5, 2.0)))
+    return T.Compose(ops + tail)
 
 
 # ---------------------------------------------------------------- 指标
@@ -216,6 +254,11 @@ def main():
     ap.add_argument("--dropout", type=float, default=0.0)
     ap.add_argument("--no-pretrained", action="store_true")
     ap.add_argument("--out", default="")
+    ap.add_argument("--data", default="", help="数据集根目录（含 splits/），默认读 CATTRACE_DATASET 或 仓库根/dataset_v1")
+    ap.add_argument("--aug", default="legacy", choices=("legacy", "v2"), help="数据增强预设")
+    ap.add_argument("--rrc-min", type=float, default=0.45, help="RandomResizedCrop 面积下限（v2 建议 0.65）")
+    ap.add_argument("--erase", type=float, default=0.0, help="RandomErasing 概率，0 表示关闭")
+    ap.add_argument("--tag", default="", help="写进 runs/ 目录名，便于区分对照实验")
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -228,13 +271,18 @@ def main():
         print("GPU:", torch.cuda.get_device_name(0))
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    run_dir = os.path.join(HERE, "runs", f"{stamp}_{args.backbone}")
+    suffix = f"{args.backbone}"
+    if args.tag:
+        suffix += f"_{args.tag}"
+    run_dir = os.path.join(HERE, "runs", f"{stamp}_{suffix}")
     os.makedirs(run_dir, exist_ok=True)
 
-    tr = CatEarDataset("train", build_tf(args.img, True))
-    va = CatEarDataset("val", build_tf(args.img, False))
-    te = CatEarDataset("test", build_tf(args.img, False))
-    print(f"train {len(tr)} / val {len(va)} / test {len(te)}")
+    data_root = os.path.join(args.data, "splits") if args.data else SPLITS
+    tr = CatEarDataset("train", build_tf(args.img, True, args.aug, args.rrc_min, args.erase), data_root)
+    va = CatEarDataset("val", build_tf(args.img, False), data_root)
+    te = CatEarDataset("test", build_tf(args.img, False), data_root)
+    print(f"train {len(tr)} / val {len(va)} / test {len(te)}  | aug={args.aug} rrc_min={args.rrc_min} "
+          f"erase={args.erase} mixup={args.mixup}")
 
     dl_tr = DataLoader(tr, batch_size=args.bs, shuffle=True, num_workers=args.workers,
                        pin_memory=True, drop_last=len(tr) > args.bs, persistent_workers=args.workers > 0)
@@ -359,7 +407,7 @@ def main():
         print("混淆矩阵没画出来:", e)
 
     print("\n" + "=" * 58)
-    print(f"阈值 {thr:.2f}（在 val 上按 balanced_acc 选）")
+    print(f"阈值 {thr:.2f}（在 val 上按\"漏绝育率≤10% 时最大化剪耳召回\"选）")
     for k in ("val", "test", "test_tta"):
         m = report[k]
         print(f"{k:9s} acc {m['acc']:.3f} auc {m['auc']:.3f} | "

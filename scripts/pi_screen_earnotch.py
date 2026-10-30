@@ -56,7 +56,8 @@ TEXT = {
         "nocat": "没有猫",
         "thr": "阈值",
         "frozen": "已冻结",
-        "nocat_hint": "把猫脸放进框内",
+        # 实测中被拒的多是"猫在远处/侧身/只露屁股"，说成"没有猫"会让人以为模型坏了
+        "nocat_hint": "猫太小或没正脸，靠近些",
         "keys": "空格 冻结   S 存档   1 标正   2 标负   Q 退出",
     },
     "en": {
@@ -66,7 +67,7 @@ TEXT = {
         "nocat": "NO CAT",
         "thr": "thr",
         "frozen": "FROZEN",
-        "nocat_hint": "put the cat head in the box",
+        "nocat_hint": "too small or no front face - move closer",
         "keys": "SPACE freeze   S snapshot   1 pos   2 neg   Q quit",
     },
 }
@@ -118,6 +119,42 @@ def classify(prob: float, threshold: float, band: float) -> str:
     if prob < threshold - band:
         return "intact"
     return "uncertain"
+
+
+def crop_box(w: int, h: int, frac: float) -> tuple[int, int, int, int]:
+    """取景框：推理只吃框内，框外只给用户看上下文。"""
+    if frac >= 1.0:
+        return 0, 0, w, h
+    s = int(min(w, h) * frac)
+    cx, cy = w // 2, h // 2
+    return cx - s // 2, cy - s // 2, cx + s // 2, cy + s // 2
+
+
+def two_stage(
+    rgb: np.ndarray,
+    gate,
+    model,
+    gate_threshold: float,
+    crop: float,
+) -> tuple[str, float | None, float | None]:
+    """两级识别：先判"是不是猫"，再判"是否已绝育"。
+
+    返回 (verdict, prob, p_cat)。门控没过时 prob 为 None，
+    下游据此显示为"没有猫"而不是给一个无意义的剪耳概率。
+
+    两级**共用同一块裁剪帧**：若门控吃整图而剪耳吃取景框，猫在框外时
+    会出现"有猫"却对着框内空白判剪耳的矛盾结论。
+    """
+    hh, ww = rgb.shape[:2]
+    roi = Image.fromarray(rgb).crop(crop_box(ww, hh, crop))
+
+    p_cat = None
+    if gate is not None:
+        p_cat = float(gate.predict_proba(roi)[0])
+        if p_cat < gate_threshold:
+            return "nocat", None, p_cat
+    prob = model._predict(roi)
+    return classify(prob, model.threshold, model.band), prob, p_cat
 
 
 def render(
@@ -413,25 +450,8 @@ def main() -> int:
 
     def infer(rgb: np.ndarray) -> None:
         """对一帧做门控 + 剪耳推理，结果写进 state。"""
-        hh, ww = rgb.shape[:2]
-        if crop < 1.0:
-            s = int(min(ww, hh) * crop)
-            cx, cy = ww // 2, hh // 2
-            box = (cx - s // 2, cy - s // 2, cx + s // 2, cy + s // 2)
-        else:
-            box = (0, 0, ww, hh)
-        roi = Image.fromarray(rgb).crop(box)
-
-        state["p_cat"] = None
-        if gate is not None:
-            p_cat = float(gate.predict_proba(rgb)[0])
-            state["p_cat"] = p_cat
-            if p_cat < args.gate_threshold:
-                state["verdict"], state["prob"] = "nocat", None
-                return
-        prob = model._predict(roi)
-        state["prob"] = prob
-        state["verdict"] = classify(prob, model.threshold, model.band)
+        v, p, pc = two_stage(rgb, gate, model, args.gate_threshold, crop)
+        state["verdict"], state["prob"], state["p_cat"] = v, p, pc
 
     try:
         running = True

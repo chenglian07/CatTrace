@@ -124,3 +124,85 @@ def test_open_source_accepts_synthetic() -> None:
     assert changed is True
     assert frame.shape == (48, 64, 3)
     src.close()
+
+
+# ---------------- 两级识别：先判猫/非猫，再判剪耳 ----------------
+
+
+class _FakeGate:
+    """记录收到的图，固定返回 p_cat。"""
+
+    def __init__(self, p_cat: float) -> None:
+        self.p_cat = p_cat
+        self.seen: list[Image.Image] = []
+
+    def predict_proba(self, img) -> np.ndarray:
+        im = img if isinstance(img, Image.Image) else Image.fromarray(np.asarray(img))
+        self.seen.append(im.copy())
+        return np.array([self.p_cat, 1.0 - self.p_cat], dtype=np.float32)
+
+
+class _FakeEar:
+    threshold = 0.58
+    band = 0.12
+
+    def __init__(self, prob: float) -> None:
+        self.prob = prob
+        self.seen: list[Image.Image] = []
+
+    def _predict(self, img) -> float:
+        im = img if isinstance(img, Image.Image) else Image.fromarray(np.asarray(img))
+        self.seen.append(im.copy())
+        return self.prob
+
+
+def _rgb(h: int = 60, w: int = 80) -> np.ndarray:
+    y = np.linspace(0, 255, h, dtype=np.float32)[:, None]
+    x = np.linspace(0, 255, w, dtype=np.float32)[None, :]
+    return np.stack([x + 0 * y, y + 0 * x, np.full((h, w), 90.0)], axis=-1).astype(np.uint8)
+
+
+def test_gate_rejects_before_ear_notch_runs() -> None:
+    """门控没过时不能跑剪耳：否则会对着一面墙给出"已绝育"。"""
+    gate, ear = _FakeGate(0.02), _FakeEar(0.99)
+    verdict, prob, p_cat = hud.two_stage(_rgb(), gate, ear, 0.5, 1.0)
+    assert verdict == "nocat"
+    assert prob is None
+    assert p_cat == pytest.approx(0.02)
+    assert ear.seen == [], "门控已判定没猫，剪耳不该被调用"
+
+
+def test_gate_passes_then_ear_notch_decides() -> None:
+    gate, ear = _FakeGate(0.97), _FakeEar(0.91)
+    verdict, prob, p_cat = hud.two_stage(_rgb(), gate, ear, 0.5, 1.0)
+    assert verdict == "notched" and prob == pytest.approx(0.91)
+    assert p_cat == pytest.approx(0.97)
+
+
+def test_gate_and_ear_notch_see_the_same_crop() -> None:
+    """回归：门控若吃整图、剪耳吃取景框，猫在框外时会给出矛盾结论。"""
+    gate, ear = _FakeGate(0.9), _FakeEar(0.5)
+    hud.two_stage(_rgb(), gate, ear, 0.5, 0.5)
+    assert len(gate.seen) == 1 and len(ear.seen) == 1
+    assert gate.seen[0].size == ear.seen[0].size
+    assert np.array_equal(np.asarray(gate.seen[0]), np.asarray(ear.seen[0]))
+
+
+def test_gate_can_be_disabled() -> None:
+    """--gate off：没有门控时直接进剪耳，p_cat 为 None。"""
+    ear = _FakeEar(0.95)
+    verdict, prob, p_cat = hud.two_stage(_rgb(), None, ear, 0.5, 1.0)
+    assert verdict == "notched" and p_cat is None
+    assert len(ear.seen) == 1
+
+
+def test_gate_threshold_is_inclusive() -> None:
+    """p_cat 恰好等于阈值时应放行（比较用严格小于）。"""
+    gate, ear = _FakeGate(0.5), _FakeEar(0.95)
+    assert hud.two_stage(_rgb(), gate, ear, 0.5, 1.0)[0] == "notched"
+
+
+@pytest.mark.parametrize("frac,expect", [(1.0, (0, 0, 80, 60)), (0.5, (25, 15, 55, 45))])
+def test_crop_box_geometry(frac: float, expect: tuple[int, int, int, int]) -> None:
+    assert hud.crop_box(80, 60, frac) == expect
+

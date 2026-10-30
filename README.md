@@ -28,16 +28,16 @@ CatTrace 的视觉识别流程从摄像头图像采集开始，经过猫脸检�
 |------|---------|------|
 | 摄像头图像采集 | ✅ 已实现 | 支持 CSI、USB、RTSP、文件回放、合成数据源五种接入方式 |
 | 猫脸检测与个体识别 | ⏳ 占位实现 | 接口协议已定义（`contracts/`），核心识别逻辑待开发，当前使用 Mock 跑通链路 |
-| 剪耳（绝育）识别 | ⏳ 占位实现 | 同上，Mock 版本已可输出结构化剪耳判定结果 |
+| 剪耳（绝育）识别 | 🔶 可运行基线 | `modules/earnotch:EarNotchModel` 已接入 ONNX 模型（整图级二分类 + 左右耳启发式），test acc 0.896；**不是** ROI 分类，见 [docs/earnotch.md](./docs/earnotch.md) |
 | 投票聚合与结果稳定 | ✅ 已实现 | 跨帧投票聚合，多数票决定个体身份，避免单帧误判 |
 
-**重要说明**：当前全链路验证（`PIPELINE OK`）使用的是 Mock 模拟识别结果，不代表真实 AI 模型已经完成。
+**重要说明**：猫脸检测仍是占位实现，全链路验证（`PIPELINE OK`）默认仍用 Mock 模拟猫脸结果。剪耳模块已有真实模型，但需要猫脸关键点才能裁耳，因此单独跑时用 `--catface mocks:MockCatFaceModule` 提供合法关键点。
 
 ### 二、科学 TNR 辅助
 
 TNR（Trap-Neuter-Return）是国际通行的流浪猫科学管理方法。CatTrace 尝试通过技术手段辅助 TNR 流程：
 
-- **剪耳状态判断**（规划中）：计划通过耳标识别模块判断猫咪是否已绝育（左耳剪标记）。当前耳标识别模块（`modules/earnotch/`）仍为占位实现，尚不能进行真实图像识别，仅通过 Mock 模拟输出结构化数据用于链路验证。
+- **剪耳状态判断**（可运行基线）：通过 `modules/earnotch:EarNotchModel` 判断猫咪是否已绝育。当前是用整图训练的过渡模型（test acc 0.896，未绝育误判为已绝育 7.4%），左右耳为启发式判断；接真 ROI 后必须重训并重校阈值，详见 [docs/earnotch.md](./docs/earnotch.md)。
 - **猫咪档案管理**：记录每只猫的基本信息、健康数据、绝育状态和互动历史。
 - **TNR 决策逻辑**：当系统收到疑似未绝育的识别结果（置信度 ≥ 0.80）时，基于预设规则生成 TNR 任务建议。当前该流程使用 Mock 模拟输入驱动，识别结果不代表真实 AI 判断；系统不能独立作出最终救助决策，所有建议须经人工确认后执行。
 - **救助记录追溯**：投喂、举报、医疗等全链路数据透明可追溯。
@@ -142,9 +142,9 @@ flowchart LR
 | 能力项 | 状态 | 说明 |
 |--------|------|------|
 | 摄像头采集（CSI/USB/RTSP/文件/合成） | ✅ 已实现 | 五种数据源均已实现，Pi4 CSI 实测通过 |
-| 猫/非猫分类 | 📋 规划中 | 未发现独立实现，当前流水线假设输入含猫咪图像 |
+| 猫/非猫分类 | 🔶 部分实现 | `models/cat_vs_notcat.onnx` + `CatClassifier` 可用，但只被演示脚本调用，未接入 pipeline |
 | 猫脸识别（个体 ID + 关键点） | ⏳ 占位实现 | 接口协议已定义，`modules/catface/` 为占位代码 |
-| 剪耳识别（绝育状态） | ⏳ 占位实现 | 同上，`modules/earnotch/` 为占位代码 |
+| 剪耳识别（绝育状态） | 🔶 可运行基线 | `modules/earnotch:EarNotchModel` + ONNX 权重；整图级二分类，左右耳为启发式，需猫脸关键点 |
 | 投票聚合与结果稳定 | ✅ 已实现 | 跨帧多数票聚合，防抖、多猫拒绝等逻辑完备 |
 | TNR 决策逻辑 | ✅ 已实现 | 基于规则引擎生成投粮和 TNR 任务建议，当前使用 Mock 输入驱动 |
 | 人工反馈记录 | ✅ 已实现 | 反馈 API + JSON 持久化 |
@@ -182,7 +182,9 @@ pytest -q
 python -m pipeline.runner --source synthetic:60 --mock-all   # 看到 PIPELINE OK 即通过
 ```
 
-> **当前限制**：上述命令使用 Mock 模型输出，不涉及真实 AI 推理。真实猫脸识别和剪耳识别模型尚在开发中。
+> **当前限制**：`--mock-all` 使用 Mock 猫脸与 Mock 剪耳。剪耳模块已有真实 ONNX 模型，
+> 可用 `--catface mocks:MockCatFaceModule --earnotch modules.earnotch:EarNotchModel` 跑真实推理；
+> 真实猫脸检测模型仍在开发中，详见 [docs/earnotch.md](./docs/earnotch.md)。
 
 ### 五层验证脚本
 
@@ -211,6 +213,7 @@ python scripts/verify_catvision.py
 | [docs/api.md](./docs/api.md) | REST API 完整接口文档 |
 | [docs/architecture.md](./docs/architecture.md) | 系统架构、模块关系和数据流 |
 | [docs/self-learning.md](./docs/self-learning.md) | 自学习模块：目标、边界、数据闭环、评价指标 |
+| [docs/earnotch.md](./docs/earnotch.md) | 剪耳识别：模型能力、阈值策略、指标与已知局限 |
 | [docs/roadmap.md](./docs/roadmap.md) | P0-P3 路线图与远期规划 |
 | [docs/business-plan.md](./docs/business-plan.md) | 市场分析、技术方案、产品范围 |
 | [docs/demo-guide.md](./docs/demo-guide.md) | demo.html 静态演示页使用说明 |

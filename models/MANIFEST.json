@@ -39,13 +39,26 @@
           "test_auc": 0.84,
           "missed_neuter_rate": 0.333,
           "use": "树莓派默认（aarch64 上单帧约 0.65s，convnext 约 3.2s）"
+        },
+        "convnext_tiny288_v1": {
+          "file": "earnotch_convnext_tiny288_v1.onnx",
+          "input_size": 288,
+          "size_mb": 106.21,
+          "md5": "931edd45dca093fef7c77ade3dff6546",
+          "threshold": 0.47,
+          "test_acc": 0.854,
+          "test_auc": 0.889,
+          "missed_neuter_rate": 0.148,
+          "trained_at": "2026-10-30",
+          "recipe": "--aug legacy --erase 0.2（旧配方 + RandomErasing 0.2，其余不变）",
+          "use": "候选，未设为默认。val acc 0.848 是 2026-10-30 对照里最高的一档，但同配方换种子 val acc 落在 0.696~0.848，提升在噪声内；建议先在站点实拍上做 A/B 再决定是否替换 v0"
         }
       },
       "trained_at": "2026-10-26",
       "train_script": "train/train_earnotch.py",
       "export_script": "train/export_earnotch_onnx.py",
       "note": "整图级二分类（不是契约设想的 ROI 分类）；左右耳由两侧裁剪概率差启发式判断，差异 < 0.08 时不猜。权重 106MB 超过 GitHub 单文件 100MB 上限，不进 Git，需从训练机 scp 或自行导出",
-      "caveat": "指标来自图库白天图，不是站点夜间实拍；测试集仅 48 张。未绝育误判为已绝育（7.4%）比反向（14.3%）更危险，阈值在 val 上按此约束选定"
+      "caveat": "指标来自图库白天图，不是站点夜间实拍；测试集仅 48 张。未绝育误判为已绝育（7.4%）比反向（14.3%）更危险，阈值在 val 上按此约束选定。2026-10-30 实测同配方换随机种子的 test acc 波动 0.750~0.812，小于约 6 个百分点的差异不可判，别据此判断某个改动更好"
     },
     "cat_binary": {
       "owner": "猫脸模块（分类器）",

@@ -71,3 +71,8 @@ models/*.param
 
 # 本地测试集（图片不进 Git，用 scp 同步到板子）
 test_data/
+
+# 剪耳识别：数据集与训练产物（合计 700MB+，不进 Git）
+dataset_v1/
+splits/
+train/runs/

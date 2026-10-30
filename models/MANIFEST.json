@@ -10,9 +10,42 @@
     },
     "earnotch": {
       "owner": "耳标模块",
-      "path": "models/earnotch/",
-      "current": null,
-      "note": "剪耳识别，输入是 landmarks 裁出的耳部 ROI，不自己检测猫脸"
+      "path": "models/",
+      "current": "earnotch_convnext_tiny288_v0.onnx",
+      "runtime_class": "modules.earnotch:EarNotchModel",
+      "format": "onnx + 同名 .json（记录 input_size / mean / std / threshold / band）",
+      "input": "整图 RGB，短边缩放后中心裁方形；不做 ROI 裁剪",
+      "output": "float32 [1,2] logits，下标 1 = notched（剪耳）",
+      "opset": 17,
+      "threshold": 0.58,
+      "band": 0.12,
+      "variants": {
+        "convnext_tiny288": {
+          "file": "earnotch_convnext_tiny288_v0.onnx",
+          "input_size": 288,
+          "size_mb": 106.21,
+          "md5": "3d94da6cb038b2e15907450d25c77a1e",
+          "test_acc": 0.896,
+          "test_auc": 0.896,
+          "missed_neuter_rate": 0.074,
+          "use": "开发机默认（精度最高）"
+        },
+        "resnet18_224": {
+          "file": "earnotch_resnet18224_v0.onnx",
+          "input_size": 224,
+          "size_mb": 42.63,
+          "md5": "201145947b90f600447778828302e02e",
+          "test_acc": 0.75,
+          "test_auc": 0.84,
+          "missed_neuter_rate": 0.333,
+          "use": "树莓派默认（aarch64 上单帧约 0.65s，convnext 约 3.2s）"
+        }
+      },
+      "trained_at": "2026-10-26",
+      "train_script": "train/train_earnotch.py",
+      "export_script": "train/export_earnotch_onnx.py",
+      "note": "整图级二分类（不是契约设想的 ROI 分类）；左右耳由两侧裁剪概率差启发式判断，差异 < 0.08 时不猜。权重 106MB 超过 GitHub 单文件 100MB 上限，不进 Git，需从训练机 scp 或自行导出",
+      "caveat": "指标来自图库白天图，不是站点夜间实拍；测试集仅 48 张。未绝育误判为已绝育（7.4%）比反向（14.3%）更危险，阈值在 val 上按此约束选定"
     },
     "cat_binary": {
       "owner": "猫脸模块（分类器）",

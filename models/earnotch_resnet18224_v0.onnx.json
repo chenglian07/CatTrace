@@ -1,0 +1,22 @@
+{
+  "format": "catvision.earnotch.onnx/1",
+  "backbone": "resnet18",
+  "input_size": 224,
+  "opset": 17,
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "threshold": 0.58,
+  "band": 0.12,
+  "source_checkpoint": "earnotch_resnet18_v0.pt",
+  "checkpoint_epoch": 4,
+  "val_auc": null,
+  "onnx_max_abs_diff": 3.725290298461914e-07
+}

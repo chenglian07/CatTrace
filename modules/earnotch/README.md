@@ -1,5 +1,9 @@
 # 耳标识别模块
 
+> 已提供可运行基线：`modules.earnotch:EarNotchModel`（ONNX 整图分类 +
+> 左右耳启发式），部署与限制见 [docs/earnotch.md](../../docs/earnotch.md)。
+> 下面仍是接口/协作规范。
+>
 > 输入是 `FramePacket + list[CatFace]`，输出 `list[EarNotch]`。
 > **不要自己检测猫脸**——那是猫脸模块的活，你只管耳朵。
 
@@ -24,8 +28,7 @@ left_ear_base  / left_ear_tip
 right_ear_base / right_ear_tip
 ```
 
-裁 ROI 的推荐做法：以 `ear_base` 和 `ear_tip` 为对角线，向外扩 30%~50%（耳廓会超出这两点），
-再按 `head_pose.roll` 把 ROI 转正。
+裁 ROI 的正确做法是**绕两点向外扩边**，不要把两点当成矩形的对角线：
 
 ```python
 def roi(face, which):
@@ -34,9 +37,20 @@ def roi(face, which):
     tip = lm.left_ear_tip if which == "left" else lm.right_ear_tip
     if tip is None:
         return None                      # 看不见 → 见下面第 3 条
-    pad = 0.4
-    ...
+    fx, fy, fw, fh = face.bbox
+    x0, x1 = sorted((base[0], tip[0]))
+    y0, y1 = sorted((base[1], tip[1]))
+    x0, x1 = x0 - 0.18 * fw, x1 + 0.18 * fw   # 横向各扩 0.18 脸宽
+    y0, y1 = y0 - 0.12 * fh, y1 + 0.10 * fh   # 上扩 0.12、下扩 0.10 脸高
+    if x1 - x0 < 0.30 * fw:                   # 保底宽度，别退化成窄条
+        cx = (x0 + x1) / 2
+        x0, x1 = cx - 0.15 * fw, cx + 0.15 * fw
+    return [x0, y0, x1 - x0, y1 - y0]
 ```
+
+**别用「两点当对角线」的老写法**：耳根和耳尖的连线只有约 0.08 脸宽，得到的是落在额头上的
+窄条——而剪耳缺口正好在框外。实测 41/41 个样本都落在窄条之外。现行实现在
+`EarNotchModel._ear_roi()` 里，扩边系数是几何估计，不是学出来的；换成真关键点模型后会自动变准。
 
 `head_pose` 也不要浪费：`|yaw| > 45°` 时远侧耳朵基本不可信，直接判 `visible=false` 比硬猜强。
 

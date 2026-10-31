@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import sys
 import threading
 import time
@@ -116,9 +117,10 @@ VERDICT_COLOR = {
 }
 VERDICT_TEXT = {
     "zh": {
-        "notched": "已剪耳 · 已绝育",
-        "intact": "未剪耳 · 未绝育",
-        "uncertain": "看不清 · 不下结论",
+        # 分隔符用中文逗号：DroidSansFallback 没有 "·"，画出来会是方框
+        "notched": "已剪耳，已绝育",
+        "intact": "未剪耳，未绝育",
+        "uncertain": "看不清，不下结论",
         "nocat": "没有猫",
         "cat": "是猫",
     },
@@ -245,13 +247,45 @@ def open_camera(args):
     return frame, close
 
 
-def capture_loop(args, clf, notch, frame_fn, close_fn):
+LATEST_LOCK = threading.Lock()
+LATEST = {"rgb": None, "seq": 0}
+
+
+def capture_frames(frame_fn) -> None:
+    """只负责取帧，保证摄像头永远有消费者。
+
+    推理（剪耳 + TTA）一次要 1s 左右；如果取帧和推理在同一个循环里，
+    这段时间 libcamera 的 buffer 没人 dequeue，1s 后就会报
+    "Camera frontend has timed out!" 并永久阻塞。所以取帧独立成线程，
+    始终只保留最新一帧，推理线程读最新帧。
+    """
+    while True:
+        try:
+            rgb = frame_fn()
+        except Exception as exc:  # 单次取帧失败不杀线程
+            log(f"取帧失败：{exc}")
+            time.sleep(0.5)
+            continue
+        with LATEST_LOCK:
+            LATEST["rgb"] = rgb
+            LATEST["seq"] += 1
+        time.sleep(0.1)  # ~10fps，足够喂饱 libcamera
+
+
+def infer_loop(args, clf, notch) -> None:
     fps_smooth = 0.0
     last = time.perf_counter()
-    try:
-        while True:
-            rgb = frame_fn()
+    last_seq = 0
+    while True:
+        with LATEST_LOCK:
+            rgb = LATEST["rgb"]
+            seq = LATEST["seq"]
+        if rgb is None or seq == last_seq:
+            time.sleep(0.02)
+            continue
+        last_seq = seq
 
+        try:
             if args.rotate == 180:
                 rgb = rgb[::-1, ::-1]
             elif args.rotate == 90:
@@ -319,10 +353,40 @@ def capture_loop(args, clf, notch, frame_fn, close_fn):
                 log(f"#{STATE['frames']:4d} {label:6s} p_cat={p_cat:.4f}{extra} {fps_smooth:.1f} FPS")
 
             time.sleep(max(0.0, args.interval - (time.perf_counter() - now)))
-    except KeyboardInterrupt:
-        log("中断")
-    finally:
-        close_fn()
+        except Exception as exc:  # 单帧异常别让推理线程退出
+            log(f"单帧处理失败：{exc}")
+            time.sleep(0.2)
+
+
+def stall_watchdog(timeout: float) -> None:
+    """摄像头 V4L2 超时后 capture_array() 会永久阻塞，页面就停在最后一帧。
+
+    看门狗发现 frames 超过 timeout 秒没变化就退出进程，交给 systemd 的
+    Restart=always 重新初始化摄像头；比整个服务假死好排查。
+    """
+    deadline = time.time() + 120
+    while True:
+        with STATE_LOCK:
+            frames = STATE["frames"]
+        if frames > 0:
+            break
+        if time.time() > deadline:
+            log("120s 内没有拿到第一帧，退出")
+            os._exit(1)
+        time.sleep(5)
+
+    last = frames
+    changed_at = time.time()
+    while True:
+        time.sleep(5)
+        with STATE_LOCK:
+            frames = STATE["frames"]
+        if frames != last:
+            last = frames
+            changed_at = time.time()
+        elif time.time() - changed_at > timeout:
+            log(f"采集 {timeout:.0f}s 没有新帧（摄像头可能超时），退出等待 systemd 重启")
+            os._exit(1)
 
 
 PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
@@ -563,6 +627,8 @@ def main() -> int:
                     help="关掉剪耳模型的水平翻转 TTA（快一倍，但阈值是按 TTA 校准的）")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--stall-timeout", type=float, default=60.0,
+                    help="摄像头多少秒没有新帧就退出等待重启（0=关闭看门狗）")
     args = ap.parse_args()
     args.interval = 1.0 / args.fps if args.fps > 0 else 0.0
 
@@ -597,10 +663,13 @@ def main() -> int:
         STATE["ear_enabled"] = notch is not None
 
     frame_fn, close_fn = open_camera(args)
-    worker = threading.Thread(
-        target=capture_loop, args=(args, clf, notch, frame_fn, close_fn), daemon=True
-    )
-    worker.start()
+    threading.Thread(target=capture_frames, args=(frame_fn,), daemon=True).start()
+    threading.Thread(target=infer_loop, args=(args, clf, notch), daemon=True).start()
+
+    if args.stall_timeout > 0:
+        threading.Thread(
+            target=stall_watchdog, args=(args.stall_timeout,), daemon=True
+        ).start()
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     log(f"打开 http://<树莓派IP>:{args.port}/ 看实时画面")
@@ -610,6 +679,7 @@ def main() -> int:
         log("关闭")
     finally:
         server.shutdown()
+        close_fn()
     return 0
 
 

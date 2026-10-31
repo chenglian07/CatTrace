@@ -79,10 +79,28 @@ fi
 # kiosk 常驻时别让屏幕休眠/黑屏
 command -v xset >/dev/null 2>&1 && xset s off -dpms 2>/dev/null || true
 
+CHROME_ARGS=()
+if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+  # Raspberry Pi OS Bookworm/Trixie 默认 Wayland；不加这个 Chromium 会去连 X11，
+  # 报 "Missing X server or $DISPLAY" 后直接退出。
+  CHROME_ARGS+=(--ozone-platform=wayland)
+fi
+
 log "打开 $URL"
 exec "$CHROME" \
-  --kiosk "$URL" \
+  "${CHROME_ARGS[@]}" \
+  --kiosk \
+  --start-fullscreen \
+  "$URL" \
   --noerrdialogs \
+  --no-first-run \
+  --disable-translate \
+  --disable-features=Translate,TranslateUI \
+  --renderer-process-limit=1 \
+  --js-flags=--max-old-space-size=64 \
+  --disable-extensions \
+  --disable-sync \
+  --disable-background-networking \
   --disable-infobars \
   --disable-session-crashed-bubble \
   --disable-restore-session-state \

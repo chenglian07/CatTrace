@@ -73,6 +73,8 @@ CJK_FONTS = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    # Raspberry Pi OS 自带的中文 fallback，免装 fonts-noto-cjk
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
     "C:/Windows/Fonts/msyh.ttc",
 )
 FALLBACK_FONTS = (
@@ -81,9 +83,19 @@ FALLBACK_FONTS = (
 )
 
 
-def get_font(size: int):
-    """优先中文字体（HUD 用中文），没有就退回西文字体。"""
-    for p in CJK_FONTS + FALLBACK_FONTS:
+def get_font(size: int, *, cjk: bool = False):
+    """cjk=True 用于中文判定大字；cjk=False 用于 p_notch/FPS 这类纯 ASCII。
+
+    DroidSansFallbackFull 只有中文字形，拿它画 ASCII 会全是方框，所以两种文字
+    分开选字体：中文优先 CJK 字体，数字/英文优先 DejaVu。
+    """
+    primary, secondary = (CJK_FONTS, FALLBACK_FONTS) if cjk else (FALLBACK_FONTS, CJK_FONTS)
+    for p in primary:
+        try:
+            return ImageFont.truetype(p, size)
+        except Exception:
+            continue
+    for p in secondary:
         try:
             return ImageFont.truetype(p, size)
         except Exception:
@@ -153,7 +165,7 @@ def annotate(
     img = Image.fromarray(rgb)
     w, h = img.size
     draw = ImageDraw.Draw(img, "RGBA")
-    font = get_font(max(18, h // 12))
+    font = get_font(max(18, h // 12), cjk=True)
     small = get_font(max(12, h // 26))
     texts = VERDICT_TEXT["zh" if has_cjk_font() else "en"]
 

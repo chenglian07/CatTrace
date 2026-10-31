@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import numpy as np
@@ -22,7 +23,11 @@ from modules.catface.cat_classifier import (
 MODEL = Path(__file__).resolve().parents[1] / "models" / "cat_vs_notcat.onnx"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "classifier"
 
-needs_model = pytest.mark.skipif(not MODEL.exists(), reason=f"没有模型文件 {MODEL.name}")
+HAS_ORT = importlib.util.find_spec("onnxruntime") is not None
+needs_model = pytest.mark.skipif(
+    not MODEL.exists() or not HAS_ORT,
+    reason=f"没有模型文件 {MODEL.name} 或没装 onnxruntime",
+)
 
 
 def _fake_image(w: int = 800, h: int = 600) -> Image.Image:

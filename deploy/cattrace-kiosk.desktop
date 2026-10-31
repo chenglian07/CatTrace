@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=CatTrace 摄像头
+Name[zh_CN]=CatTrace 摄像头
+Comment=全屏打开树莓派摄像头画面与猫/非猫判定
+Comment[zh_CN]=全屏打开树莓派摄像头画面与猫/非猫判定
+Exec=/home/lyx/catvision/scripts/pi_kiosk.sh
+Path=/home/lyx/catvision
+Icon=camera-web
+Terminal=false
+Categories=AudioVideo;Video;
+StartupNotify=false

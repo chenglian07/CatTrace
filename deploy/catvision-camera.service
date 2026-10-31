@@ -1,0 +1,16 @@
+[Unit]
+Description=CatTrace 摄像头网页服务（CSI + 猫/非猫识别）
+Documentation=file://%h/catvision/docs/pi-kiosk.md
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/catvision
+Environment=PYTHONUNBUFFERED=1
+# --threads 1：1GB 的 Pi4 上和 Chromium 抢 CPU 时不至于卡死页面
+ExecStart=%h/venvs/catvision/bin/python scripts/pi_phone_demo.py --rotate 180 --port 8000 --fps 3 --threads 1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

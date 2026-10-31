@@ -54,6 +54,11 @@ CHROME="$(command -v chromium || command -v chromium-browser || true)"
 
 command -v curl >/dev/null 2>&1 || die "缺 curl：sudo apt install -y curl"
 
+if ! ls "$REPO_DIR"/models/earnotch_*.onnx >/dev/null 2>&1; then
+  warn "没找到剪耳权重（models/earnotch_*.onnx），页面会退回只看猫/非猫。"
+  warn "从开发机同步：scp models/earnotch_resnet18224_v0.onnx* lyx@<树莓派IP>:~/catvision/models/"
+fi
+
 TARGET="$(systemctl get-default 2>/dev/null || echo unknown)"
 if [[ "$TARGET" != "graphical.target" ]]; then
   warn "当前默认启动级别是 ${TARGET}，桌面图标需要图形界面。"

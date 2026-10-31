@@ -15,6 +15,10 @@
 页面里：左边是实时画面（带判定和置信度），右边是最近 30 帧的记录。
 点「保存快照」会把当前帧存到 /dev/shm（内存盘，不写 SD 卡）。
 
+树莓派桌面全屏（Chromium kiosk）用 /kiosk：只留画面，隐藏页头和记录表，
+适合双击桌面图标直接看。安装脚本见 scripts/install_pi_kiosk.sh。
+    http://127.0.0.1:8000/kiosk
+
 没有摄像头时也能验证链路本身（拿图片当视频源）：
     python scripts/pi_phone_demo.py --source file:tests/fixtures/classifier/chelsea_cat.png
 """
@@ -36,7 +40,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from modules.catface.cat_classifier import CatClassifier  # noqa: E402
+# 模型依赖 onnxruntime，放到 main() 里再 import：
+# 这样只跑网页（或单测页面路由）时不需要装推理运行时。
 
 STATE_LOCK = threading.Lock()
 STATE = {
@@ -216,6 +221,16 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
  .warn{display:none}
  .warn.on{display:block;margin:0 16px 12px;padding:10px 14px;border-radius:8px;
           background:#4a1d1d;border:1px solid #a33;color:#ffd9d9;font-size:13px}
+ /* kiosk：只留全屏画面，给树莓派桌面快捷方式 / Chromium --kiosk 用 */
+ body.kiosk{overflow:hidden;background:#000;cursor:none}
+ body.kiosk header,body.kiosk .right,body.kiosk .hint,body.kiosk #warn{display:none}
+ body.kiosk .wrap{padding:0;gap:0;display:block}
+ body.kiosk .left{min-width:0}
+ body.kiosk img{width:100vw;height:100vh;object-fit:contain;border-radius:0}
+ #kstatus{display:none}
+ body.kiosk #kstatus{display:block;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+   padding:8px 16px;border-radius:999px;background:rgba(0,0,0,.72);color:#fff;font-size:14px}
+ body.kiosk #kstatus.ok{display:none}
 </style></head><body>
 <header>
   <h1>猫识别 · 摄像头实时验证</h1>
@@ -228,6 +243,7 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <button onclick="snap()">保存快照</button>
 </header>
 <div id="warn"></div>
+<div id="kstatus"></div>
 <div class="wrap">
   <div class="left"><img id="s" alt="等待画面…"></div>
   <div class="right"><table id="hist"></table></div>
@@ -239,6 +255,13 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <script>
 let lastFrameTs = 0, lastOk = Date.now();
 const img = document.getElementById('s');
+const kstatus = document.getElementById('kstatus');
+// /kiosk 或 ?kiosk=1：整页只留画面
+let kpath = location.pathname;
+while (kpath.length > 1 && kpath.endsWith('/')) kpath = kpath.slice(0, -1);
+const KIOSK = kpath === '/kiosk'
+  || new URLSearchParams(location.search).has('kiosk');
+if (KIOSK) document.body.classList.add('kiosk');
 
 // 用轮询单帧代替 MJPEG 长连接：连接断了能自己恢复，不会永远卡在旧帧上
 function pull(){
@@ -250,10 +273,12 @@ function pull(){
     lastOk = Date.now();
     document.getElementById('link').textContent = '● 在线';
     document.getElementById('link').style.color = '#2ecc71';
+    if (kstatus) kstatus.className = 'ok';
   };
   probe.onerror = () => {
     document.getElementById('link').textContent = '● 断线重连中';
     document.getElementById('link').style.color = '#e74c3c';
+    if (kstatus) { kstatus.className = ''; kstatus.textContent = '断线重连中…'; }
   };
   probe.src = url;
 }
@@ -298,7 +323,8 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
+        path = self.path.split("?", 1)[0]
+        if path in ("/", "/index.html", "/kiosk", "/kiosk/"):
             body = PAGE.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -306,7 +332,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        elif self.path == "/stats":
+        elif path == "/stats":
             with STATE_LOCK:
                 data = {
                     "label": STATE["label"],
@@ -323,7 +349,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        elif self.path.startswith(("/frame.jpg", "/snapshot.jpg")):
+        elif path.startswith(("/frame.jpg", "/snapshot.jpg")):
             with STATE_LOCK:
                 jpg = STATE["jpeg"]
             self.send_response(200)
@@ -333,7 +359,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(jpg)
 
-        elif self.path.startswith("/stream"):
+        elif path.startswith("/stream"):
             self.send_response(200)
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
             self.end_headers()
@@ -384,6 +410,8 @@ def main() -> int:
     ap.add_argument("--host", default="0.0.0.0")
     args = ap.parse_args()
     args.interval = 1.0 / args.fps if args.fps > 0 else 0.0
+
+    from modules.catface.cat_classifier import CatClassifier
 
     clf = CatClassifier(args.model, intra_op_threads=args.threads)
     log(f"模型已加载 {args.model}")

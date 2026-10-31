@@ -1,0 +1,22 @@
+{
+  "format": "catvision.earnotch.onnx/1",
+  "backbone": "convnext_tiny",
+  "input_size": 288,
+  "opset": 17,
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "threshold": 0.58,
+  "band": 0.12,
+  "source_checkpoint": "earnotch_convnext288_v0.pt",
+  "checkpoint_epoch": 15,
+  "val_auc": 0.8495,
+  "onnx_max_abs_diff": 1.0728836059570312e-06
+}

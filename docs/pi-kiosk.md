@@ -45,12 +45,14 @@ Chromium --kiosk  （树莓派桌面图标启动）
    > 桌面约占 270MB，Chromium 再占 350MB+，1GB 的 Pi4 会比较紧。
    > 装完先用 `free -m` 看剩余内存；吃紧就把 `--fps` / `--threads` 再降（见第 7 节）。
 
-2. **Chromium**：
+2. **Chromium + 中文字体**：
 
    ```bash
-   sudo apt install -y chromium        # Bookworm / Trixie
+   sudo apt install -y chromium fonts-noto-cjk   # Bookworm / Trixie
    # 老系统包名是 chromium-browser
    ```
+
+   没装中文字体时 HUD 会自动退回英文（`NOTCHED · NEUTERED`），页面上的中文不受影响。
 
 3. **venv 和模型**（`~/catvision` 已部署过的话一般都有了）：
 

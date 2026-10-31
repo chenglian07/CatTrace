@@ -9,6 +9,6 @@ numpy>=2
 #   sudo apt install -y python3-picamera2 python3-numpy python3-pil
 # 注意：不要用 tflite-runtime —— 实测 Py3.13 aarch64 没有任何匹配的 wheel。
 
-# 屏幕演示（scripts/pi_screen_demo.py、pi_screen_earnotch.py）另外需要 pygame，
-# 故意不放进本清单：它是纯显示依赖，装了不会影响推理，但会让无声部署多一个失败点。
+# 网页方案（scripts/pi_phone_demo.py）不依赖 pygame；剪耳模型和猫/非猫模型都走 onnxruntime。
+# 只有旧的本机屏幕脚本 scripts/pi_screen_demo.py 还需要 pygame（本清单不装）：
 #   sudo apt install -y python3-pygame     # 或 pip install pygame

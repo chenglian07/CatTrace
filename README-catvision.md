@@ -169,6 +169,7 @@ python -m pipeline.runner --source synthetic:30 --mock-all --mock-multi-cat-rati
 python -m pipeline.runner --source csi://0 --fps 2 --db catvision.db --jsonl events.jsonl
 
 bash scripts/setup_pi.sh                       # 树莓派一键部署
+bash scripts/install_pi_kiosk.sh               # 桌面图标：Chromium kiosk 全屏打开摄像头页面
 python scripts/record_frames.py --source csi://0 --fps 2 --seconds 300 --out datasets/raw/2026-10-22
 ```
 

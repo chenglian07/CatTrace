@@ -353,6 +353,10 @@ class EarNotchModel:
         return [round(x0, 2), round(y0, 2), round(x1 - x0, 2), round(y1 - y0, 2)]
 
     # -------------------------------------------------------------- inference
+    def predict_image(self, image: Image.Image) -> float:
+        """整图 P(notched)。网页/演示脚本用：不做左右耳，只回答剪没剪耳。"""
+        return self._predict(image)
+
     def _predict(self, image: Image.Image) -> float:
         x = self._preprocess(image)
         logits = self.session.run([self.output_name], {self.input_name: x})[0]

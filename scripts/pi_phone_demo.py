@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""摄像头 → 猫/非猫分类 → 网页实时预览。
+"""摄像头 → 猫/非猫 + 剪耳（绝育）判定 → 网页实时预览。
 
-用途：拿手机屏幕显示一张猫的照片，凑到树莓派摄像头前，看网页上的判定翻转，
-用来验证「摄像头拍到的是手机上的图片」时模型是否还判得对。
+两级串联，和原来的屏幕演示同一套模型：
+  1. cat_vs_notcat：画面里有没有猫（没有猫就不给绝育结论，避免对墙报"已绝育"）；
+  2. earnotch：这只猫剪没剪耳 → 已绝育 / 未绝育 / 看不清。
+
+用途：树莓派网页（含桌面 kiosk）实时显示摄像头画面和判定，手机/电脑也能看。
 
     # 树莓派上（CSI 摄像头）
     ssh pi-cat
@@ -19,6 +22,7 @@
 适合双击桌面图标直接看。安装脚本见 scripts/install_pi_kiosk.sh。
     http://127.0.0.1:8000/kiosk
 
+没有剪耳权重 / 不想跑第二级时加 --earnotch off，退回只看猫/非猫；
 没有摄像头时也能验证链路本身（拿图片当视频源）：
     python scripts/pi_phone_demo.py --source file:tests/fixtures/classifier/chelsea_cat.png
 """
@@ -50,6 +54,10 @@ STATE = {
     "fps": 0.0,
     "frames": 0,
     "luma": 0.0,
+    "verdict": "starting",
+    "p_notch": None,
+    "notched": None,
+    "ear_enabled": False,
     "history": deque(maxlen=30),
     "jpeg": b"",
     "raw": None,
@@ -61,14 +69,21 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+CJK_FONTS = (
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "C:/Windows/Fonts/msyh.ttc",
+)
+FALLBACK_FONTS = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+)
+
+
 def get_font(size: int):
-    """找一个能显示中文的字体，找不到就退回默认字体。"""
-    for p in (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "C:/Windows/Fonts/msyh.ttc",
-        "C:/Windows/Fonts/arialbd.ttf",
-    ):
+    """优先中文字体（HUD 用中文），没有就退回西文字体。"""
+    for p in CJK_FONTS + FALLBACK_FONTS:
         try:
             return ImageFont.truetype(p, size)
         except Exception:
@@ -76,34 +91,105 @@ def get_font(size: int):
     return ImageFont.load_default()
 
 
-def annotate(rgb: np.ndarray, label: str, p_cat: float, fps: float) -> Image.Image:
-    """在画面上画判定条：顶部大字 + 置信度条。"""
+def has_cjk_font() -> bool:
+    return any(Path(p).is_file() for p in CJK_FONTS)
+
+
+VERDICT_COLOR = {
+    "notched": (46, 204, 113),
+    "intact": (243, 156, 18),
+    "uncertain": (149, 165, 166),
+    "nocat": (231, 76, 60),
+    "cat": (46, 204, 113),
+}
+VERDICT_TEXT = {
+    "zh": {
+        "notched": "已剪耳 · 已绝育",
+        "intact": "未剪耳 · 未绝育",
+        "uncertain": "看不清 · 不下结论",
+        "nocat": "没有猫",
+        "cat": "是猫",
+    },
+    "en": {
+        "notched": "NOTCHED · NEUTERED",
+        "intact": "INTACT · NOT NEUTERED",
+        "uncertain": "UNCERTAIN",
+        "nocat": "NOT CAT",
+        "cat": "CAT",
+    },
+}
+
+
+def crop_box(w: int, h: int, frac: float) -> tuple[int, int, int, int]:
+    """取景框：只对画面中央的正方形做推理，猫离得远时用 0.5~0.7。"""
+    if frac >= 1.0:
+        return 0, 0, w, h
+    s = int(min(w, h) * frac)
+    cx, cy = w // 2, h // 2
+    return cx - s // 2, cy - s // 2, cx + s // 2, cy + s // 2
+
+
+def classify_notch(prob: float, threshold: float, band: float) -> str:
+    """三档判定，比较方向与 modules.earnotch 的 `_one()` 保持一致。"""
+    if prob > threshold + band:
+        return "notched"
+    if prob < threshold - band:
+        return "intact"
+    return "uncertain"
+
+
+def annotate(
+    rgb: np.ndarray,
+    *,
+    label: str,
+    p_cat: float,
+    fps: float,
+    verdict: str | None = None,
+    p_notch: float | None = None,
+    notch_threshold: float = 0.5,
+    notch_band: float = 0.0,
+) -> Image.Image:
+    """顶部大字判定 + 右侧概率条；剪耳可用时显示绝育结论和 p_notch。"""
     img = Image.fromarray(rgb)
     w, h = img.size
     draw = ImageDraw.Draw(img, "RGBA")
     font = get_font(max(18, h // 12))
     small = get_font(max(12, h // 26))
+    texts = VERDICT_TEXT["zh" if has_cjk_font() else "en"]
 
-    is_cat = label == "cat"
-    color = (46, 204, 113) if is_cat else (231, 76, 60)
-    text = "CAT" if is_cat else "NOT CAT"
+    key = verdict or ("cat" if label == "cat" else "nocat")
+    color = VERDICT_COLOR.get(key, (231, 76, 60))
+    text = texts.get(key, texts["nocat"])
 
     # 顶部条
     draw.rectangle([0, 0, w, int(h * 0.16)], fill=(0, 0, 0, 170))
     draw.text((12, int(h * 0.02)), text, font=font, fill=color + (255,))
-    draw.text((12, int(h * 0.115)), f"p_cat={p_cat:.3f}  {fps:.1f} FPS", font=small,
+    second = []
+    if p_notch is not None:
+        second.append(f"p_notch={p_notch:.3f}")
+    second.append(f"p_cat={p_cat:.3f}")
+    second.append(f"{fps:.1f} FPS")
+    draw.text((12, int(h * 0.115)), "  ".join(second), font=small,
               fill=(220, 220, 220, 255))
 
-    # 右侧置信度条
+    # 右侧概率条：有剪耳结论时画 p_notch，否则画 p_cat
     bar_w = max(10, w // 28)
     bx = w - bar_w - 10
     top, bottom = int(h * 0.20), int(h * 0.94)
     draw.rectangle([bx, top, bx + bar_w, bottom], fill=(0, 0, 0, 120))
-    frac = max(0.0, min(1.0, p_cat))
-    fill_h = int((bottom - top) * frac)
+    value = p_notch if p_notch is not None else p_cat
+    fill_h = int((bottom - top) * max(0.0, min(1.0, value)))
     draw.rectangle([bx, bottom - fill_h, bx + bar_w, bottom], fill=color + (255,))
-    # 0.5 阈值刻度线
-    mid = bottom - int((bottom - top) * 0.5)
+
+    if p_notch is not None:
+        thr_line, band = notch_threshold, notch_band
+    else:
+        thr_line, band = 0.5, 0.0
+    if band > 0:
+        band_top = bottom - int((bottom - top) * min(1.0, thr_line + band))
+        band_bottom = bottom - int((bottom - top) * max(0.0, thr_line - band))
+        draw.rectangle([bx, band_top, bx + bar_w, band_bottom], fill=(255, 255, 255, 40))
+    mid = bottom - int((bottom - top) * max(0.0, min(1.0, thr_line)))
     draw.line([bx - 6, mid, bx + bar_w + 2, mid], fill=(255, 255, 255, 200), width=2)
     return img
 
@@ -147,7 +233,7 @@ def open_camera(args):
     return frame, close
 
 
-def capture_loop(args, clf, frame_fn, close_fn):
+def capture_loop(args, clf, notch, frame_fn, close_fn):
     fps_smooth = 0.0
     last = time.perf_counter()
     try:
@@ -161,8 +247,20 @@ def capture_loop(args, clf, frame_fn, close_fn):
             elif args.rotate == 270:
                 rgb = np.rot90(rgb, k=1)
 
-            probs = clf.predict_proba(rgb)
-            label = "cat" if probs[0] >= args.threshold else "notcat"
+            h, w = rgb.shape[:2]
+            x0, y0, x1, y1 = crop_box(w, h, args.crop)
+            roi = Image.fromarray(rgb[y0:y1, x0:x1])
+
+            p_cat = float(clf.predict_proba(roi)[0])
+            label = "cat" if p_cat >= args.threshold else "notcat"
+            p_notch = None
+            verdict = None
+            if label == "cat" and notch is not None:
+                try:
+                    p_notch = float(notch.predict_image(roi))
+                    verdict = classify_notch(p_notch, notch.threshold, notch.band)
+                except Exception as exc:  # 单帧失败不该拖垮整条流
+                    log(f"剪耳推理失败，跳过本帧：{exc}")
             luma = float(rgb.mean())
 
             now = time.perf_counter()
@@ -171,27 +269,42 @@ def capture_loop(args, clf, frame_fn, close_fn):
             if dt > 0:
                 fps_smooth = 0.9 * fps_smooth + 0.1 * (1.0 / dt) if fps_smooth else 1.0 / dt
 
-            img = annotate(rgb, label, float(probs[0]), fps_smooth)
+            img = annotate(
+                rgb,
+                label=label,
+                p_cat=p_cat,
+                fps=fps_smooth,
+                verdict=verdict,
+                p_notch=p_notch,
+                notch_threshold=notch.threshold if notch else 0.5,
+                notch_band=notch.band if notch else 0.0,
+            )
             jpg = encode(img)
 
             with STATE_LOCK:
                 STATE["label"] = label
-                STATE["p_cat"] = float(probs[0])
+                STATE["p_cat"] = p_cat
                 STATE["fps"] = fps_smooth
                 STATE["frames"] += 1
                 STATE["luma"] = luma
                 STATE["jpeg"] = jpg
                 STATE["raw"] = rgb
+                STATE["p_notch"] = p_notch
+                STATE["notched"] = None if verdict in (None, "uncertain") else verdict == "notched"
+                STATE["verdict"] = verdict or ("nocat" if label != "cat" else "cat")
                 STATE["history"].appendleft(
                     {
                         "t": round(time.time() - STATE["started"], 2),
                         "label": label,
-                        "p_cat": round(float(probs[0]), 4),
+                        "p_cat": round(p_cat, 4),
+                        "verdict": STATE["verdict"],
+                        "p_notch": round(p_notch, 4) if p_notch is not None else None,
                     }
                 )
 
             if STATE["frames"] % 10 == 0:
-                log(f"#{STATE['frames']:4d} {label:6s} p_cat={probs[0]:.4f} {fps_smooth:.1f} FPS")
+                extra = f" {verdict} p_notch={p_notch:.3f}" if p_notch is not None else ""
+                log(f"#{STATE['frames']:4d} {label:6s} p_cat={p_cat:.4f}{extra} {fps_smooth:.1f} FPS")
 
             time.sleep(max(0.0, args.interval - (time.perf_counter() - now)))
     except KeyboardInterrupt:
@@ -216,6 +329,8 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
  table{width:100%;border-collapse:collapse;font-size:13px}
  td{padding:3px 6px;border-bottom:1px solid #262b36}
  .cat{color:#2ecc71;font-weight:600}.notcat{color:#e74c3c;font-weight:600}
+ .notched{color:#2ecc71;font-weight:600}.intact{color:#f39c12;font-weight:600}
+ .uncertain{color:#95a5a6;font-weight:600}
  button{background:#2f6fed;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer}
  .hint{font-size:12px;color:#8b93a7;padding:0 16px 16px;line-height:1.6}
  .warn{display:none}
@@ -233,8 +348,9 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
  body.kiosk #kstatus.ok{display:none}
 </style></head><body>
 <header>
-  <h1>猫识别 · 摄像头实时验证</h1>
+  <h1>猫识别 · 剪耳（绝育）判定</h1>
   <span class="pill">判定：<span id="lab">--</span></span>
+  <span class="pill" id="neuPill" style="display:none">绝育：<span id="neu">--</span></span>
   <span class="pill">p_cat：<span id="p">--</span></span>
   <span class="pill"><span id="fps">--</span> FPS</span>
   <span class="pill">帧数 <span id="n">0</span></span>
@@ -249,7 +365,7 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="right"><table id="hist"></table></div>
 </div>
 <div class="hint">
- 把手机屏幕上的猫图凑到摄像头前，判定应该在 CAT / NOT CAT 之间翻转。
+ 判定分两级：先看画面里有没有猫，有猫再判剪耳（绝育）状态。
  若画面上下颠倒，用 <code>--rotate 180</code> 启动。快照存在树莓派的 /dev/shm/shots。
 </div>
 <script>
@@ -262,6 +378,10 @@ while (kpath.length > 1 && kpath.endsWith('/')) kpath = kpath.slice(0, -1);
 const KIOSK = kpath === '/kiosk'
   || new URLSearchParams(location.search).has('kiosk');
 if (KIOSK) document.body.classList.add('kiosk');
+
+const NEU_TEXT = {notched: '已剪耳 · 已绝育', intact: '未剪耳 · 未绝育',
+                  uncertain: '看不清 · 不下结论', nocat: '没有猫', cat: '—'};
+const NEU_SHORT = {notched: '已剪耳', intact: '未剪耳', uncertain: '看不清', nocat: '—', cat: ''};
 
 // 用轮询单帧代替 MJPEG 长连接：连接断了能自己恢复，不会永远卡在旧帧上
 function pull(){
@@ -294,6 +414,15 @@ async function tick(){
     document.getElementById('n').textContent = d.frames;
     document.getElementById('lum').textContent = d.luma.toFixed(0);
 
+    const neuPill = document.getElementById('neuPill');
+    if (d.ear_enabled) {
+      neuPill.style.display = '';
+      const neu = document.getElementById('neu');
+      neu.textContent = NEU_TEXT[d.verdict] || '—';
+      neu.className = d.verdict === 'notched' ? 'notched'
+        : (d.verdict === 'intact' ? 'intact' : '');
+    }
+
     const w = document.getElementById('warn');
     if (d.luma < 25) {
       w.textContent = '⚠️ 画面几乎全黑（亮度 ' + d.luma.toFixed(0) + '/255）：镜头可能被挡住了，或者手机贴太近把镜头盖住了。';
@@ -306,7 +435,7 @@ async function tick(){
     }
 
     document.getElementById('hist').innerHTML = d.history.map(h =>
-      `<tr><td>${h.t.toFixed(1)}s</td><td class="${h.label}">${h.label.toUpperCase()}</td><td>${h.p_cat.toFixed(4)}</td></tr>`
+      `<tr><td>${h.t.toFixed(1)}s</td><td class="${h.label}">${h.label.toUpperCase()}</td><td>${h.p_cat.toFixed(4)}</td><td class="${h.verdict}">${NEU_SHORT[h.verdict] || ''}</td></tr>`
     ).join('');
   }catch(e){}
 }
@@ -340,6 +469,10 @@ class Handler(BaseHTTPRequestHandler):
                     "fps": round(STATE["fps"], 2),
                     "frames": STATE["frames"],
                     "luma": round(STATE["luma"], 1),
+                    "verdict": STATE["verdict"],
+                    "p_notch": STATE["p_notch"],
+                    "notched": STATE["notched"],
+                    "ear_enabled": STATE["ear_enabled"],
                     "history": list(STATE["history"]),
                 }
             body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -405,7 +538,17 @@ def main() -> int:
     ap.add_argument("--fps", type=float, default=5.0, help="推理帧率上限")
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--rotate", type=int, default=0, choices=(0, 90, 180, 270))
-    ap.add_argument("--threshold", type=float, default=0.5)
+    ap.add_argument("--threshold", type=float, default=0.5, help="猫/非猫判定阈值")
+    ap.add_argument("--crop", type=float, default=1.0,
+                    help="只对画面中央正方形推理（1.0=整帧，猫远时 0.5~0.7）")
+    ap.add_argument("--earnotch", default="auto", choices=("auto", "on", "off"),
+                    help="剪耳判定：auto=有模型就开，off=只看猫/非猫")
+    ap.add_argument("--earnotch-model", default="",
+                    help="剪耳 ONNX 路径；留空按平台自动选（Pi 用 resnet18）")
+    ap.add_argument("--notch-threshold", type=float, default=None, help="覆盖权重里的剪耳阈值")
+    ap.add_argument("--notch-band", type=float, default=None, help="覆盖不确定带宽度")
+    ap.add_argument("--no-tta", action="store_true",
+                    help="关掉剪耳模型的水平翻转 TTA（快一倍，但阈值是按 TTA 校准的）")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="0.0.0.0")
     args = ap.parse_args()
@@ -414,11 +557,36 @@ def main() -> int:
     from modules.catface.cat_classifier import CatClassifier
 
     clf = CatClassifier(args.model, intra_op_threads=args.threads)
-    log(f"模型已加载 {args.model}")
+    log(f"猫/非猫模型 {args.model}")
+
+    notch = None
+    if args.earnotch != "off":
+        from modules.earnotch import EarNotchModel
+
+        try:
+            notch = EarNotchModel(
+                model_path=args.earnotch_model or None,
+                threshold=args.notch_threshold,
+                band=args.notch_band,
+                tta=not args.no_tta,
+                threads=args.threads,
+            )
+        except Exception as exc:
+            if args.earnotch == "on":
+                raise
+            log(f"剪耳模型不可用，退回只看猫/非猫：{exc}")
+        else:
+            log(
+                f"剪耳模型 {notch.model_path.name} input={notch.input_size} "
+                f"thr={notch.threshold:.2f}±{notch.band:.2f} tta={notch.tta}"
+            )
+
+    with STATE_LOCK:
+        STATE["ear_enabled"] = notch is not None
 
     frame_fn, close_fn = open_camera(args)
     worker = threading.Thread(
-        target=capture_loop, args=(args, clf, frame_fn, close_fn), daemon=True
+        target=capture_loop, args=(args, clf, notch, frame_fn, close_fn), daemon=True
     )
     worker.start()
 

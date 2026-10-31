@@ -57,7 +57,7 @@ if ! service_up; then
     log "后台启动摄像头服务：$VENV_PY scripts/pi_phone_demo.py --port $PORT"
     mkdir -p "$(dirname "$LOG")"
     nohup "$VENV_PY" "$REPO_DIR/scripts/pi_phone_demo.py" \
-      --rotate 180 --port "$PORT" --threads 1 --fps 3 \
+      --rotate 180 --port "$PORT" --threads 2 --fps 2 --earnotch auto \
       >>"$LOG" 2>&1 &
   fi
 

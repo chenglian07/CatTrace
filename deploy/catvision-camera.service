@@ -1,7 +1,6 @@
 [Unit]
 Description=CatTrace 摄像头网页服务（CSI + 猫/非猫识别）
 Documentation=file://%h/catvision/docs/pi-kiosk.md
-After=network-online.target
 
 [Service]
 Type=simple

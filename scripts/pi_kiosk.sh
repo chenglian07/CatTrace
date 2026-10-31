@@ -91,19 +91,9 @@ exec "$CHROME" \
   "${CHROME_ARGS[@]}" \
   --kiosk \
   --start-fullscreen \
-  --user-data-dir="${CATTRACE_CHROME_PROFILE:-/tmp/cattrace-chrome}" \
-  "$URL" \
-  --noerrdialogs \
+  --incognito \
   --no-first-run \
+  --password-store=basic \
   --disable-translate \
   --disable-features=Translate,TranslateUI \
-  --renderer-process-limit=1 \
-  --js-flags=--max-old-space-size=64 \
-  --disable-extensions \
-  --disable-sync \
-  --disable-background-networking \
-  --disable-infobars \
-  --disable-session-crashed-bubble \
-  --disable-restore-session-state \
-  --password-store=basic \
-  --check-for-update-interval=31536000
+  "$URL"

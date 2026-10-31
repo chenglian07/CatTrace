@@ -35,7 +35,7 @@
 | 5 | 右上角弹翻译气泡 | Chromium 界面语言英文、页面中文 | `/etc/chromium/policies/managed/cattrace.json` → `{"TranslateEnabled": false}` |
 | 6 | HUD 数字/英文显示成方框 | `DroidSansFallbackFull` 只有中文字形，ASCII 用它会变方框 | 中文/英文分开选字体；分隔符 `·` 改中文逗号 `，` |
 | 7 | 推理时摄像头超时 | 取帧和推理在同一个循环，推理 1s+ 期间没人 dequeue，libcamera 报超时并永久阻塞 | 取帧独立线程（~10fps），推理线程只读最新帧；加 `--stall-timeout 60` 看门狗 |
-| 8 | 反复 `pkill` 后 Chromium 黑屏 | 默认 profile 留下崩溃恢复状态 | kiosk 用独立 `--user-data-dir=/tmp/cattrace-chrome` |
+| 8 | 双击图标后只有桌面、没有 Chromium 窗口 | 自定义 `--user-data-dir` 和一组内存优化参数在 labwc 下窗口不映射 | 改用 `--incognito` + 精简参数（只留 `--ozone-platform=wayland --kiosk --start-fullscreen` 等） |
 
 ## 4. 未解决：CSI 摄像头连续出流超时
 

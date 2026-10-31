@@ -129,7 +129,7 @@ fi
 
 # --- 4. 等服务就绪（失败只警告，不挡安装） -----------------------------------
 READY=0
-for _ in $(seq 1 20); do
+for _ in $(seq 1 45); do
   if curl -fsS --max-time 1 "http://127.0.0.1:${PORT}/stats" >/dev/null 2>&1; then
     READY=1
     break

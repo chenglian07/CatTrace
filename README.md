@@ -214,10 +214,12 @@ python scripts/verify_catvision.py
 | [docs/architecture.md](./docs/architecture.md) | 系统架构、模块关系和数据流 |
 | [docs/self-learning.md](./docs/self-learning.md) | 自学习模块：目标、边界、数据闭环、评价指标 |
 | [docs/earnotch.md](./docs/earnotch.md) | 剪耳识别：模型能力、阈值策略、指标与已知局限 |
+| [docs/pi-kiosk.md](./docs/pi-kiosk.md) | 树莓派桌面 kiosk：双击图标全屏看摄像头 + 剪耳（绝育）判定 |
 | [docs/roadmap.md](./docs/roadmap.md) | P0-P3 路线图与远期规划 |
 | [docs/business-plan.md](./docs/business-plan.md) | 市场分析、技术方案、产品范围 |
 | [docs/demo-guide.md](./docs/demo-guide.md) | demo.html 静态演示页使用说明 |
 | [docs/验证指南.md](./docs/验证指南.md) | 摄像头接入 + 模块联调五层验证说明 |
+| [docs/pi-kiosk-实测记录.md](./docs/pi-kiosk-实测记录.md) | 2026-10-31 实测：kiosk 部署、已修问题、摄像头 CSI 超时 |
 | [docs/接手流程.md](./docs/接手流程.md) | 新成员必读：环境搭建、分工、PR 流程 |
 
 ### 分模块说明

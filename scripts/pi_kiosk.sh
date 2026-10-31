@@ -16,7 +16,7 @@ PORT="${CATVISION_PORT:-8000}"
 URL="http://127.0.0.1:${PORT}/kiosk"
 STATS="http://127.0.0.1:${PORT}/stats"
 LOG="${CATVISION_LOG:-/tmp/catvision-camera.log}"
-WAIT_S="${CATVISION_WAIT:-40}"
+WAIT_S="${CATVISION_WAIT:-60}"
 
 log() { printf '[cattrace-kiosk] %s\n' "$*"; }
 

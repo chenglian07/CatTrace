@@ -85,7 +85,7 @@ python scripts/pi_phone_demo.py --rotate 180 --port 8000
 ```
 
 `/` 和 `/kiosk` 都是两级串联：先判有没有猫，有猫再判剪耳，顶部直接显示
-「已剪耳 · 已绝育 / 未剪耳 · 未绝育 / 看不清 · 不下结论 / 没有猫」。
+「已剪耳，已绝育 / 未剪耳，未绝育 / 看不清，不下结论 / 没有猫」。
 `--earnotch off` 关掉第二级，`--earnotch-model` 换权重，`--crop 0.6` 收缩取景框。
 桌面 kiosk 的安装见 [pi-kiosk.md](./pi-kiosk.md)。
 

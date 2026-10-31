@@ -95,7 +95,7 @@ bash scripts/install_pi_kiosk.sh
 | 写 systemd 用户服务 | `~/.config/systemd/user/catvision-camera.service`，开机/登录后常驻 `:8000` |
 | 写桌面图标 | `~/Desktop/CatTrace.desktop`（`Exec` 指向 `scripts/pi_kiosk.sh`） |
 | 写应用菜单项 | `~/.local/share/applications/CatTrace.desktop` |
-| 等 20 秒自检 | 打 `http://127.0.0.1:8000/stats`，服务没起来会提示看哪份日志 |
+| 等 45 秒自检 | 打 `http://127.0.0.1:8000/stats`，服务没起来会提示看哪份日志 |
 
 可选参数：
 
@@ -110,7 +110,7 @@ bash scripts/install_pi_kiosk.sh --no-service     # 只放图标，服务自己�
 
 - **双击桌面图标「CatTrace 摄像头」**：Chromium kiosk 全屏打开 `http://127.0.0.1:8000/kiosk`。
   图标本身不启动模型，`scripts/pi_kiosk.sh` 会先确认服务在跑（没跑就拉起来），再开浏览器。
-- **画面上的结论**：`已剪耳 · 已绝育` / `未剪耳 · 未绝育` / `看不清 · 不下结论` / `没有猫`；
+- **画面上的结论**：`已剪耳，已绝育` / `未剪耳，未绝育` / `看不清，不下结论` / `没有猫`；
   第二行是 `p_notch`、`p_cat` 和 FPS，右侧柱是 p_notch（白线=阈值，灰带=不确定带）。
 - **退出 kiosk**：`Alt+F4`；或另开终端 `pkill chromium`。
 - **手机 / 电脑看**：`http://10.1.41.171:8000/`（普通页面，右侧有 30 帧记录表）。
@@ -134,6 +134,14 @@ bash scripts/install_pi_kiosk.sh --no-service     # 只放图标，服务自己�
 
 > 想让机器像 Appliance 一样开机直接进画面：先设置自动登录（`raspi-config` → System Options →
 > Boot / Auto Login → Desktop Autologin），再开 `--autostart`。
+
+> **下次要用摄像头，需要先手动开服务器吗？**
+> 不需要。服务是 `enabled` + `Linger=yes`，开机自动启动；双击桌面图标只负责开 Chromium，
+> 如果服务没跑，`pi_kiosk.sh` 会把它拉起来并等最多 60 秒。默认不会自动全屏，
+> 要开机自动进画面就装 `--autostart`。
+
+本次在 `pi4-cat` 上的完整部署、验证和遗留问题见
+[pi-kiosk-实测记录.md](./pi-kiosk-实测记录.md)。
 
 ## 6. 从 Windows 远程部署
 
@@ -162,7 +170,9 @@ ssh lyx@10.1.41.171 "bash ~/catvision/scripts/install_pi_kiosk.sh"
 |---|---|
 | 双击图标提示「不受信任」 | 右键图标 →「允许启动 / Allow Launching」；或 `gio set ~/Desktop/CatTrace.desktop metadata::trusted true` |
 | 右上角弹翻译气泡 | 见第 2 节最后一步写 Chromium 策略；写完 `pkill chromium` 再重新双击图标 |
-| 双击图标后黑屏/没反应 | 服务首次启动要加载两个模型 + 初始化摄像头，约 20–30 秒；`pi_kiosk.sh` 最多等 40 秒。超过就 `journalctl --user -u catvision-camera -n 50` |
+| 画面卡住 / `frames` 不动 | 先看日志有没有 `Camera frontend has timed out`：有就是 CSI 供电/排线问题。停服务后跑 `rpicam-vid -t 5000 -o /tmp/t.h264` 复现；先换 5V/3A 电源、重插排线，详见 [实测记录](./pi-kiosk-实测记录.md) 第 4 节 |
+| 服务反复重启（`NRestarts` 一直涨） | 同上，多半是摄像头超时触发看门狗。硬件没修好前先 `systemctl --user stop catvision-camera`，修好后 `start` |
+| 双击图标后黑屏/没反应 | 服务首次启动要加载两个模型 + 初始化摄像头，约 20–30 秒；`pi_kiosk.sh` 最多等 60 秒。超过就 `journalctl --user -u catvision-camera -n 50` |
 | `没找到 chromium` | `sudo apt install -y chromium` |
 | `当前没有图形会话` | 在桌面里双击，或 `ssh -X`；纯 SSH 终端开不了 kiosk |
 | 页面 404 / 打不开 | `curl http://127.0.0.1:8000/stats`；不行看 `journalctl --user -u catvision-camera -n 50` |

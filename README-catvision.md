@@ -223,4 +223,6 @@ Pi 只能拉不能推 —— 代码一律从开发机 push。
 | [`modules/catface/README.md`](modules/catface/README.md) | 猫脸模块完整交接 | 猫脸识别 |
 | [`modules/earnotch/README.md`](modules/earnotch/README.md) | 耳标模块完整交接 | 耳标识别 |
 | [`docs/部署.md`](docs/部署.md) | Pi 环境 + 故障排查 | 摄像头与联调 |
+| [`docs/pi-kiosk.md`](docs/pi-kiosk.md) | 桌面 kiosk：网页全屏 + 剪耳判定 + 排障 | 摄像头与联调 |
+| [`docs/pi-kiosk-实测记录.md`](docs/pi-kiosk-实测记录.md) | 2026-10-31 实测记录与摄像头 CSI 超时 | 摄像头与联调 |
 | [`docs/camera-selection.md`](docs/camera-selection.md) | 选型决策 | 摄像头与联调 |

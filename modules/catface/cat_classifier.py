@@ -26,7 +26,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import onnxruntime as ort
 from PIL import Image, ImageOps
 
 CLASSES = ("cat", "notcat")
@@ -65,6 +64,13 @@ class CatClassifier:
             raise FileNotFoundError(
                 f"找不到模型：{model_path}（从开发机 scp 到 ~/catvision/models/ 即可）"
             )
+
+        try:
+            import onnxruntime as ort
+        except ImportError as exc:  # 没有推理运行时也要能 import 模块跑预处理单测
+            raise RuntimeError(
+                "猫/非猫分类需要 onnxruntime：pip install onnxruntime"
+            ) from exc
 
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = intra_op_threads

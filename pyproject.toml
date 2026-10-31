@@ -17,6 +17,8 @@ dev = [
     "pytest>=8",
     "jsonschema>=4.20",
     "ruff>=0.4",
+    # 单测会 import modules/pipeline，直接用到 numpy；CI 只装 .[dev]
+    "numpy>=1.24",
 ]
 pi = [
     "numpy",

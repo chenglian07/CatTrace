@@ -1,0 +1,15 @@
+[Unit]
+Description=CatTrace 摄像头网页服务（CSI + 猫/非猫识别）
+Documentation=file://%h/catvision/docs/pi-kiosk.md
+
+[Service]
+Type=simple
+WorkingDirectory=%h/catvision
+Environment=PYTHONUNBUFFERED=1
+# --threads 2：两级推理（猫/非猫 + 剪耳）跑在 Pi4 上，给 Chromium 留出核心
+ExecStart=%h/venvs/catvision/bin/python scripts/pi_phone_demo.py --rotate 180 --port 8000 --fps 2 --threads 2 --earnotch auto
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

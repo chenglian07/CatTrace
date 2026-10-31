@@ -45,14 +45,22 @@ Chromium --kiosk  （树莓派桌面图标启动）
    > 桌面约占 270MB，Chromium 再占 350MB+，1GB 的 Pi4 会比较紧。
    > 装完先用 `free -m` 看剩余内存；吃紧就把 `--fps` / `--threads` 再降（见第 7 节）。
 
-2. **Chromium + 中文字体**：
+2. **Chromium**：
 
    ```bash
-   sudo apt install -y chromium fonts-noto-cjk   # Bookworm / Trixie
+   sudo apt install -y chromium   # Bookworm / Trixie
    # 老系统包名是 chromium-browser
    ```
 
-   没装中文字体时 HUD 会自动退回英文（`NOTCHED · NEUTERED`），页面上的中文不受影响。
+   Pi OS 自带 `DroidSansFallbackFull.ttf`，HUD 中文开箱可用；系统里一个中文字体都没有时，
+   HUD 会自动退回英文（`NOTCHED · NEUTERED`），页面上的中文不受影响。
+
+   建议再关掉 Chromium 的翻译气泡（页面是中文、Chromium 界面语言是英文时会弹）：
+
+   ```bash
+   sudo mkdir -p /etc/chromium/policies/managed
+   echo '{"TranslateEnabled": false}' | sudo tee /etc/chromium/policies/managed/cattrace.json
+   ```
 
 3. **venv 和模型**（`~/catvision` 已部署过的话一般都有了）：
 
@@ -153,7 +161,8 @@ ssh lyx@10.1.41.171 "bash ~/catvision/scripts/install_pi_kiosk.sh"
 | 现象 | 原因 / 处理 |
 |---|---|
 | 双击图标提示「不受信任」 | 右键图标 →「允许启动 / Allow Launching」；或 `gio set ~/Desktop/CatTrace.desktop metadata::trusted true` |
-| 双击没反应 | 终端里跑 `bash ~/catvision/scripts/pi_kiosk.sh`，看它打印到哪一步 |
+| 右上角弹翻译气泡 | 见第 2 节最后一步写 Chromium 策略；写完 `pkill chromium` 再重新双击图标 |
+| 双击图标后黑屏/没反应 | 服务首次启动要加载两个模型 + 初始化摄像头，约 20–30 秒；`pi_kiosk.sh` 最多等 40 秒。超过就 `journalctl --user -u catvision-camera -n 50` |
 | `没找到 chromium` | `sudo apt install -y chromium` |
 | `当前没有图形会话` | 在桌面里双击，或 `ssh -X`；纯 SSH 终端开不了 kiosk |
 | 页面 404 / 打不开 | `curl http://127.0.0.1:8000/stats`；不行看 `journalctl --user -u catvision-camera -n 50` |

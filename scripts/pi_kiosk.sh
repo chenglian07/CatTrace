@@ -91,6 +91,7 @@ exec "$CHROME" \
   "${CHROME_ARGS[@]}" \
   --kiosk \
   --start-fullscreen \
+  --user-data-dir="${CATTRACE_CHROME_PROFILE:-/tmp/cattrace-chrome}" \
   "$URL" \
   --noerrdialogs \
   --no-first-run \

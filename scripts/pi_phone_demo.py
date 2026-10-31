@@ -561,9 +561,9 @@ def main() -> int:
 
     notch = None
     if args.earnotch != "off":
-        from modules.earnotch import EarNotchModel
-
         try:
+            from modules.earnotch import EarNotchModel
+
             notch = EarNotchModel(
                 model_path=args.earnotch_model or None,
                 threshold=args.notch_threshold,

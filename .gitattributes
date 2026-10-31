@@ -4,6 +4,7 @@ modules/** text eol=lf
 mocks/** text eol=lf
 pipeline/** text eol=lf
 scripts/** text eol=lf
+deploy/** text eol=lf
 tests/** text eol=lf
 requirements/** text eol=lf
 models/MANIFEST.json text eol=lf

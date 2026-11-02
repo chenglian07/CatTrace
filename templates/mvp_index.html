@@ -1,0 +1,223 @@
+<!-- ============================================================
+     MVP 首页模板 (mvp_index.html)
+     功能：猫迹 CatTrace MVP 版本的首页，展示直播区域、投喂记录、猫咪列表
+     技术栈：Jinja2 模板 + 原生 JS，通过 fetch 调用后端 API
+     ============================================================ -->
+<!DOCTYPE html>
+<!-- lang="zh-CN" 声明页面语言为简体中文，便于屏幕阅读器和搜索引擎识别 -->
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 视口设置：适配移动端，宽度等于设备宽度，初始缩放比例 1:1 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猫迹 CatTrace MVP - 云养猫平台</title>
+    <!-- 引入全局样式表，cache_bust 参数用于缓存清除（每次部署更新后强制浏览器重新加载 CSS） -->
+    <link rel="stylesheet" href="/static/css/style.css?v={{ cache_bust }}">
+    <!-- 移动端浏览器主题色设置（地址栏颜色），品牌粉色 #d88da3 -->
+    <meta name="theme-color" content="#d88da3">
+</head>
+<body>
+    <!-- ==================== 顶部导航栏区块 ==================== -->
+    <nav class="navbar">
+        <!-- 品牌标识区域：显示应用名称和 Logo emoji -->
+        <div class="nav-brand">🐱 猫迹 CatTrace MVP</div>
+        <!-- 导航链接区域：页面间跳转 -->
+        <div class="nav-links">
+            <!-- 首页链接，active 类表示当前页面高亮 -->
+            <a href="/mvp_index" class="nav-link active">首页</a>
+            <!-- 猫咪档案页链接 -->
+            <a href="/mvp_cats" class="nav-link">猫咪档案</a>
+        </div>
+        <!-- 导航操作区域：放置功能按钮 -->
+        <div class="nav-actions">
+            <!-- 暗色模式切换按钮，id="darkModeToggle" 供 JS 绑定点击事件，切换 body 的暗色主题 class -->
+            <button id="darkModeToggle" class="nav-btn">🌙</button>
+        </div>
+    </nav>
+
+    <!-- ==================== 页面主内容区域 ==================== -->
+    <main class="main-content">
+        <!-- ==================== 直播区域区块 ==================== -->
+        <!-- 展示当前直播猫咪的信息，包括摄像头画面（用 emoji 模拟）、在线人数、投喂统计 -->
+        <section class="live-section">
+            <h2 class="section-title">📹 云养猫直播</h2>
+            <div class="live-room">
+                <!-- 直播摄像头画面区域 -->
+                <div class="live-camera">
+                    <!-- 直播猫咪头像/emoji，id="liveCatEmoji" 供 JS 动态更新为当前直播猫咪的 emoji -->
+                    <div class="live-cat-avatar" id="liveCatEmoji">🐱</div>
+                    <!-- 直播覆盖层：显示直播状态和在线人数 -->
+                    <div class="live-overlay">
+                        <!-- 直播状态指示器：绿色圆点 + "直播中" 文字 -->
+                        <span class="live-status">🟢 直播中</span>
+                        <!-- 在线观众人数，id="onlineCount" 供 JS 定时刷新（每 30 秒随机更新） -->
+                        <span class="live-viewers" id="onlineCount">1,234</span>
+                    </div>
+                </div>
+                <!-- 直播信息区域：展示当前直播猫咪的详细信息 -->
+                <div class="live-info">
+                    <!-- 当前直播猫咪名称，id="liveCatName" 供 JS 动态更新 -->
+                    <h3 class="live-cat-name" id="liveCatName">咪咪</h3>
+                    <!-- 当前直播猫咪位置，id="liveCatLocation" 供 JS 动态更新 -->
+                    <p class="live-cat-location" id="liveCatLocation">📍 A 区 - 教学楼后</p>
+                    <!-- 直播统计数据 -->
+                    <div class="live-stats">
+                        <!-- 今日投喂次数，id="todayFeeds" 供 JS 从 API 获取数据后更新 -->
+                        <span>🍖 今日投喂：<strong id="todayFeeds">156</strong></span>
+                        <!-- 累计观看次数，id="totalViews" 供 JS 更新 -->
+                        <span>👁️ 累计观看：<strong id="totalViews">6,156</strong></span>
+                    </div>
+                    <!-- 远程投喂按钮，id="feedBtn" 供 JS 绑定点击事件，向 /api/feed 发送 POST 请求 -->
+                    <button id="feedBtn" class="btn btn-feed btn-large">🍖 远程投喂</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 投喂记录区块 ==================== -->
+        <!-- 展示最近的投喂记录列表，由 JS 通过 /api/feed-logs 接口动态渲染 -->
+        <section class="feed-logs-section">
+            <h3 class="section-subtitle">📋 最近投喂记录</h3>
+            <!-- 投喂记录容器，id="feedLogs" 供 JS 通过 innerHTML 动态插入记录项 -->
+            <div id="feedLogs" class="feed-logs">
+                <!-- 动态生成 -->
+            </div>
+        </section>
+
+        <!-- ==================== 猫咪列表区块 ==================== -->
+        <!-- 以网格卡片形式展示所有猫咪，由 JS 通过 /api/cats 接口动态渲染 -->
+        <section class="cats-section">
+            <h2 class="section-title">🐱 猫咪列表</h2>
+            <!-- 猫咪卡片网格容器，id="catsGrid" 供 JS 通过 innerHTML 动态插入猫咪卡片 -->
+            <div id="catsGrid" class="cats-grid">
+                <!-- 动态生成 -->
+            </div>
+        </section>
+    </main>
+
+    <!-- ==================== 页面底部区块 ==================== -->
+    <footer class="footer">
+        <p>🐱 猫迹 CatTrace MVP - 用科技守护每一只流浪猫</p>
+    </footer>
+
+    <!-- ==================== Toast 提示组件 ==================== -->
+    <!-- 全局消息提示元素，id="toast" 供 JS 中 Toast.show() 方法控制显示/隐藏 -->
+    <div id="toast" class="toast"></div>
+
+    <!-- 引入全局公共 JS（包含 Toast 组件、暗色模式等基础功能） -->
+    <script src="/static/js/main.js?v={{ cache_bust }}"></script>
+    <!-- ==================== 页面内联脚本 ==================== -->
+    <script>
+        // 封装 Toast 提示的快捷函数，type 可选值：'info' | 'success' | 'error'
+        function showToast(msg, type) { Toast.show(msg, 3000, type || 'info'); }
+
+        // ==================== 数据加载函数 ====================
+        // 并行请求猫咪列表和投喂记录，渲染到页面各处
+        async function loadData() {
+            try {
+                // Promise.all 并行发起两个 API 请求，提升加载速度
+                const [catsRes, feedsRes] = await Promise.all([
+                    fetch('/api/cats'),              // 获取所有猫咪数据
+                    fetch('/api/feed-logs?limit=10') // 获取最近 10 条投喂记录
+                ]);
+                
+                const catsData = await catsRes.json();
+                const feedsData = await feedsRes.json();
+                
+                // 渲染猫咪卡片网格
+                renderCats(catsData.cats);
+                // 渲染投喂记录列表
+                renderFeedLogs(feedsData.logs);
+                // 默认将第一只猫咪设置为直播展示对象
+                updateLiveInfo(catsData.cats[0]);
+            } catch (error) {
+                showToast('加载数据失败', 'error');
+            }
+        }
+
+        // ==================== 渲染猫咪卡片网格 ====================
+        // 将猫咪数据数组渲染为可点击的卡片，点击跳转到猫咪档案页
+        function renderCats(cats) {
+            const grid = document.getElementById('catsGrid');
+            grid.innerHTML = cats.map(cat => `
+                <div class="cat-card" onclick="window.location.href='/mvp_cats?id=${cat.id}'">
+                    <!-- 猫咪头像：使用猫咪对应的 emoji 和主题色背景 -->
+                    <div class="cat-card-avatar" style="background:${cat.color || '#d88da3'}">${cat.emoji || '🐱'}</div>
+                    <div class="cat-card-info">
+                        <h3>${cat.name}</h3>
+                        <p>📍 ${cat.location}</p>
+                        <!-- 状态徽章：class 包含状态值（adoptable/adopted/monitoring），CSS 据此设置不同颜色 -->
+                        <span class="status-badge ${cat.status}">${getStatusText(cat.status)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ==================== 渲染投喂记录列表 ====================
+        // 将投喂日志数组渲染为时间线样式的记录项
+        function renderFeedLogs(logs) {
+            const container = document.getElementById('feedLogs');
+            container.innerHTML = logs.map(log => `
+                <div class="log-item">
+                    <span class="log-time">${log.time}</span>
+                    <span class="log-user">${log.user}</span>
+                    <span class="log-action">投喂了${log.cat_name}</span>
+                </div>
+            `).join('');
+        }
+
+        // ==================== 更新直播区域信息 ====================
+        // 根据传入的猫咪对象更新直播区域显示的头像、名称、位置、投喂数
+        function updateLiveInfo(cat) {
+            if (!cat) return;
+            document.getElementById('liveCatEmoji').textContent = cat.emoji || '🐱';
+            document.getElementById('liveCatEmoji').style.background = cat.color || '#d88da3';
+            document.getElementById('liveCatName').textContent = cat.name;
+            document.getElementById('liveCatLocation').textContent = '📍 ' + cat.location;
+            document.getElementById('todayFeeds').textContent = cat.today_feeds || 0;
+        }
+
+        // ==================== 状态文本映射 ====================
+        // 将英文状态码转换为中文显示文本
+        function getStatusText(status) {
+            const map = {
+                'adoptable': '可领养',   // 可被领养
+                'adopted': '已领养',     // 已被领养
+                'monitoring': '监控中'   // 持续监控中
+            };
+            return map[status] || status;
+        }
+
+        // ==================== 投喂按钮事件绑定 ====================
+        // 点击投喂按钮后，向 /api/feed 发送 POST 请求，默认投喂 cat1
+        document.getElementById('feedBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/feed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cat_id: 'cat1' })  // MVP 版本固定投喂第一只猫
+                });
+                
+                if (response.ok) {
+                    showToast('投喂成功！', 'success');
+                    loadData(); // 投喂成功后刷新整个页面数据
+                } else {
+                    showToast('投喂失败', 'error');
+                }
+            } catch (error) {
+                showToast('网络错误', 'error');
+            }
+        });
+
+        // ==================== 页面初始化 ====================
+        // 页面加载完成后立即拉取数据并渲染
+        loadData();
+
+        // ==================== 定时刷新在线人数 ====================
+        // 每 30 秒模拟更新一次在线观众数（随机生成 1000~1500 之间的数字）
+        setInterval(() => {
+            const online = 1000 + Math.floor(Math.random() * 500);
+            document.getElementById('onlineCount').textContent = online.toLocaleString();
+        }, 30000);
+    </script>
+</body>
+</html>

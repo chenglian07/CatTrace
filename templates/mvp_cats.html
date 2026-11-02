@@ -1,0 +1,254 @@
+<!-- ============================================================
+     MVP 猫咪档案模板 (mvp_cats.html)
+     功能：展示所有猫咪的档案列表，支持搜索过滤和查看详情弹窗
+     技术栈：Jinja2 模板 + 原生 JS，通过 fetch 调用后端 API
+     交互：点击猫咪卡片弹出详情 Modal，可在 Modal 中投喂
+     ============================================================ -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 视口设置：适配移动端 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猫咪档案 - 猫迹 CatTrace MVP</title>
+    <!-- 全局样式表，cache_bust 用于部署后强制刷新缓存 -->
+    <link rel="stylesheet" href="/static/css/style.css?v={{ cache_bust }}">
+    <!-- 移动端浏览器主题色 -->
+    <meta name="theme-color" content="#d88da3">
+</head>
+<body>
+    <!-- ==================== 顶部导航栏区块 ==================== -->
+    <nav class="navbar">
+        <div class="nav-brand">🐱 猫迹 CatTrace MVP</div>
+        <div class="nav-links">
+            <a href="/mvp_index" class="nav-link">首页</a>
+            <!-- 当前页面为猫咪档案，active 类高亮 -->
+            <a href="/mvp_cats" class="nav-link active">猫咪档案</a>
+        </div>
+        <div class="nav-actions">
+            <!-- 暗色模式切换按钮，id 供 JS 绑定事件 -->
+            <button id="darkModeToggle" class="nav-btn">🌙</button>
+        </div>
+    </nav>
+
+    <!-- ==================== 页面主内容区域 ==================== -->
+    <main class="main-content">
+        <h1 class="page-title">🐱 猫咪档案</h1>
+        
+        <!-- ==================== 搜索框区块 ==================== -->
+        <!-- 提供按猫咪名称实时搜索过滤功能 -->
+        <div class="search-bar">
+            <!-- 搜索输入框，id="searchInput" 供 JS 绑定 input 事件实现实时过滤 -->
+            <input type="text" id="searchInput" class="search-input" placeholder="搜索猫咪名字...">
+        </div>
+
+        <!-- ==================== 猫咪卡片网格区块 ==================== -->
+        <!-- 由 JS 通过 /api/cats 接口动态渲染所有猫咪卡片 -->
+        <div id="catsGrid" class="cats-grid">
+            <!-- 动态生成 -->
+        </div>
+    </main>
+
+    <!-- ==================== 猫咪详情弹窗（Modal）区块 ==================== -->
+    <!-- 点击猫咪卡片后弹出的详情面板，展示猫咪完整信息并支持投喂操作 -->
+    <div id="catDetailModal" class="modal">
+        <!-- 弹窗内容容器 -->
+        <div class="modal-content cat-detail-modal">
+            <!-- 关闭按钮：点击调用 closeCatDetail() 隐藏弹窗 -->
+            <span class="modal-close" onclick="closeCatDetail()">&times;</span>
+            <!-- 弹窗头部：猫咪头像 + 基本信息 -->
+            <div class="cat-detail-header">
+                <!-- 猫咪头像 emoji，id="detailAvatar" 供 JS 动态更新 -->
+                <div class="cat-detail-avatar" id="detailAvatar">🐱</div>
+                <div class="cat-detail-info">
+                    <!-- 猫咪名称，id="detailName" -->
+                    <h2 id="detailName">猫咪名字</h2>
+                    <!-- 猫咪位置，id="detailLocation" -->
+                    <p id="detailLocation">📍 位置</p>
+                    <!-- 猫咪状态徽章，id="detailStatus"，JS 会动态设置 class 和文本 -->
+                    <span id="detailStatus" class="status-badge">状态</span>
+                </div>
+            </div>
+            <!-- 弹窗主体：详细信息分区 -->
+            <div class="cat-detail-body">
+                <!-- 基本信息分区 -->
+                <div class="cat-detail-section">
+                    <h3>基本信息</h3>
+                    <!-- 信息网格：2 列布局展示各项基本属性 -->
+                    <div class="detail-info-grid">
+                        <div class="detail-info-item">
+                            <span class="detail-label">性别</span>
+                            <span class="detail-value" id="detailGender">-</span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label">年龄</span>
+                            <span class="detail-value" id="detailAge">-</span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label">体重</span>
+                            <span class="detail-value" id="detailWeight">-</span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label">性格</span>
+                            <span class="detail-value" id="detailPersonality">-</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 投喂统计分区 -->
+                <div class="cat-detail-section">
+                    <h3>投喂统计</h3>
+                    <div class="detail-info-grid">
+                        <div class="detail-info-item">
+                            <span class="detail-label">今日投喂</span>
+                            <span class="detail-value" id="todayFeeds">0</span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label">累计投喂</span>
+                            <span class="detail-value" id="totalFeeds">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 弹窗操作区域 -->
+            <div class="cat-detail-actions">
+                <!-- 弹窗内投喂按钮，id="detailFeedBtn" 供 JS 绑定点击事件 -->
+                <button id="detailFeedBtn" class="btn btn-feed">🍖 投喂</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== Toast 提示组件 ==================== -->
+    <div id="toast" class="toast"></div>
+
+    <!-- 引入全局公共 JS -->
+    <script src="/static/js/main.js?v={{ cache_bust }}"></script>
+    <!-- ==================== 页面内联脚本 ==================== -->
+    <script>
+        // 当前正在查看的猫咪 ID，用于投喂操作时传递给 API
+        let currentCatId = null;
+
+        // ==================== 加载猫咪列表 ====================
+        // 从 /api/cats 获取所有猫咪数据并渲染网格
+        async function loadCats() {
+            try {
+                const response = await fetch('/api/cats');
+                const data = await response.json();
+                renderCatsGrid(data.cats);
+            } catch (error) {
+                showToast('加载猫咪列表失败', 'error');
+            }
+        }
+
+        // ==================== 渲染猫咪卡片网格 ====================
+        // 每张卡片点击时调用 showCatDetail() 打开详情弹窗
+        function renderCatsGrid(cats) {
+            const grid = document.getElementById('catsGrid');
+            grid.innerHTML = cats.map(cat => `
+                <div class="cat-card" onclick="showCatDetail('${cat.id}')">
+                    <!-- 猫咪头像：emoji + 主题色背景 -->
+                    <div class="cat-card-avatar" style="background:${cat.color || '#d88da3'}">${cat.emoji || ''}</div>
+                    <div class="cat-card-info">
+                        <h3>${cat.name}</h3>
+                        <p>📍 ${cat.location}</p>
+                        <!-- 状态徽章，class 包含状态值用于 CSS 着色 -->
+                        <span class="status-badge ${cat.status}">${getStatusText(cat.status)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ==================== 状态文本映射 ====================
+        function getStatusText(status) {
+            const map = {
+                'adoptable': '可领养',
+                'adopted': '已领养',
+                'monitoring': '监控中'
+            };
+            return map[status] || status;
+        }
+
+        // ==================== 显示猫咪详情弹窗 ====================
+        // 通过 /api/cats/{catId} 获取单只猫咪详情，填充弹窗各字段并显示
+        function showCatDetail(catId) {
+            currentCatId = catId; // 记录当前查看的猫咪 ID，供投喂按钮使用
+            fetch(`/api/cats/${catId}`)
+                .then(r => r.json())
+                .then(data => {
+                    const cat = data.cat;
+                    // 填充头像区域
+                    document.getElementById('detailAvatar').textContent = cat.emoji || '🐱';
+                    document.getElementById('detailAvatar').style.background = cat.color || '#d88da3';
+                    // 填充基本信息字段
+                    document.getElementById('detailName').textContent = cat.name;
+                    document.getElementById('detailLocation').textContent = '📍 ' + cat.location;
+                    document.getElementById('detailGender').textContent = cat.gender || '-';
+                    document.getElementById('detailAge').textContent = cat.age || '-';
+                    document.getElementById('detailWeight').textContent = cat.weight || '-';
+                    document.getElementById('detailPersonality').textContent = cat.personality || '-';
+                    // 填充投喂统计数据
+                    document.getElementById('todayFeeds').textContent = cat.today_feeds || 0;
+                    document.getElementById('totalFeeds').textContent = cat.total_feeds || 0;
+                    
+                    // 设置状态徽章：根据状态码映射对应的中文文本和 CSS 类名
+                    const statusMap = {
+                        'adoptable': { text: '可领养', class: 'status-adoptable' },
+                        'adopted': { text: '已领养', class: 'status-adopted' },
+                        'monitoring': { text: '监控中', class: 'status-monitoring' }
+                    };
+                    const status = statusMap[cat.status] || { text: cat.status, class: '' };
+                    const statusEl = document.getElementById('detailStatus');
+                    statusEl.textContent = status.text;
+                    statusEl.className = 'status-badge ' + status.class;
+                    
+                    // 显示弹窗（flex 布局居中）
+                    document.getElementById('catDetailModal').style.display = 'flex';
+                });
+        }
+
+        // ==================== 关闭猫咪详情弹窗 ====================
+        function closeCatDetail() {
+            document.getElementById('catDetailModal').style.display = 'none';
+        }
+
+        // ==================== 弹窗内投喂按钮事件 ====================
+        // 使用 currentCatId 向 /api/feed 发送投喂请求，成功后刷新弹窗数据
+        document.getElementById('detailFeedBtn').addEventListener('click', async () => {
+            if (!currentCatId) return;
+            
+            try {
+                const response = await fetch('/api/feed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cat_id: currentCatId })
+                });
+                
+                if (response.ok) {
+                    showToast('投喂成功！', 'success');
+                    showCatDetail(currentCatId); // 投喂成功后重新拉取数据刷新弹窗
+                } else {
+                    showToast('投喂失败', 'error');
+                }
+            } catch (error) {
+                showToast('网络错误', 'error');
+            }
+        });
+
+        // ==================== 搜索过滤功能 ====================
+        // 监听搜索框输入事件，实时过滤猫咪列表（前端过滤，每次重新拉取全量数据后 filter）
+        document.getElementById('searchInput').addEventListener('input', async (e) => {
+            const search = e.target.value.toLowerCase();
+            const response = await fetch('/api/cats');
+            const data = await response.json();
+            
+            // 按名称模糊匹配过滤
+            const filtered = data.cats.filter(cat => 
+                cat.name.toLowerCase().includes(search)
+            );
+            renderCatsGrid(filtered);
+        });
+
+        // ==================== 页面初始化 ====================
+        loadCats();
+    </script>
+</body>
+</html>

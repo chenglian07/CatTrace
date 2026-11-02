@@ -1,0 +1,378 @@
+<!-- ============================================================
+     移动端首页模板 (mobile.html)
+     功能：移动端单页应用（SPA）风格的首页，包含四个 Tab 页签：
+           首页（直播+统计+投喂记录）、猫咪档案、猫脸识别、个人中心
+     技术栈：Jinja2 模板 + 原生 JS，底部 Tab 导航切换，无页面刷新
+     API 依赖：/api/cats、/api/feed-logs、/api/recognize
+     ============================================================ -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 视口设置：禁止用户手动缩放（maximum-scale=1.0, user-scalable=no），保证 SPA 体验 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>猫迹 CatTrace 移动端</title>
+    <link rel="stylesheet" href="/static/css/style.css?v={{ cache_bust }}">
+    <meta name="theme-color" content="#d88da3">
+    <!-- ==================== 页面内联样式 ==================== -->
+    <!-- 底部固定导航栏和 Tab 内容区域的布局样式 -->
+    <style>
+        /* 底部固定导航栏：固定在视口底部，横向等分排列 */
+        .mobile-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            display: flex;
+            justify-content: space-around;
+            padding: 10px 0;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1); /* 顶部阴影区分导航和内容 */
+            z-index: 1000; /* 确保导航栏始终在最上层 */
+        }
+        /* 导航项：纵向排列图标和文字 */
+        .mobile-nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #666;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        /* 导航项激活状态：品牌粉色高亮 */
+        .mobile-nav-item.active {
+            color: #d88da3;
+        }
+        /* 导航图标大小 */
+        .mobile-nav-icon {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+        /* 主内容区域：底部留出导航栏高度（约 70px），防止内容被遮挡 */
+        .mobile-content {
+            padding-bottom: 70px;
+        }
+    </style>
+</head>
+<body>
+    <!-- ==================== 主内容区域（各 Tab 页签内容） ==================== -->
+    <div class="mobile-content">
+        <!-- 页面顶部标题栏 -->
+        <header class="mobile-header">
+            <h1>🐱 猫迹 CatTrace</h1>
+            <!-- 暗色模式切换按钮 -->
+            <button id="darkModeToggle" class="nav-btn">🌙</button>
+        </header>
+
+        <!-- ==================== Tab 1：首页页签 ==================== -->
+        <!-- 默认激活的页签（active 类），展示统计概览、直播预览、最近投喂 -->
+        <div id="homeTab" class="mobile-tab active">
+            <!-- 快速统计区域：展示猫咪总数、投喂总数、在线人数 -->
+            <section class="quick-stats">
+                <div class="stat-item">
+                    <!-- 猫咪总数，id="mTotalCats" 供 JS 更新 -->
+                    <span class="stat-value" id="mTotalCats">4</span>
+                    <span class="stat-label">猫咪</span>
+                </div>
+                <div class="stat-item">
+                    <!-- 投喂总次数，id="mTotalFeeds" 供 JS 更新 -->
+                    <span class="stat-value" id="mTotalFeeds">791</span>
+                    <span class="stat-label">投喂</span>
+                </div>
+                <div class="stat-item">
+                    <!-- 在线观众数，id="mOnline" 供 JS 更新 -->
+                    <span class="stat-value" id="mOnline">1234</span>
+                    <span class="stat-label">在线</span>
+                </div>
+            </section>
+
+            <!-- 直播预览区域：展示当前直播猫咪的缩略卡片 -->
+            <section class="live-preview">
+                <h2>📹 云养猫直播</h2>
+                <!-- 直播卡片：点击跳转到 cat1 的详情页（硬编码 MVP 版） -->
+                <div class="live-card" onclick="showCatDetail('cat1')">
+                    <!-- 直播猫咪头像，id="liveAvatar" 供 JS 更新 -->
+                    <div class="live-card-avatar" id="liveAvatar">🐱</div>
+                    <div class="live-card-info">
+                        <!-- 直播猫咪名称，id="liveName" -->
+                        <h3 id="liveName">咪咪</h3>
+                        <!-- 直播猫咪位置，id="liveLocation" -->
+                        <p id="liveLocation">📍 A 区 - 教学楼后</p>
+                    </div>
+                    <!-- 直播状态徽章 -->
+                    <span class="live-badge">🟢 直播中</span>
+                </div>
+            </section>
+
+            <!-- 最近投喂记录区域 -->
+            <section class="recent-feeds">
+                <h2>📋 最近投喂</h2>
+                <!-- 投喂记录容器，id="mobileFeedLogs" 供 JS 动态渲染 -->
+                <div id="mobileFeedLogs" class="feed-logs">
+                    <!-- 动态生成 -->
+                </div>
+            </section>
+        </div>
+
+        <!-- ==================== Tab 2：猫咪档案页签 ==================== -->
+        <!-- 展示猫咪列表，支持搜索过滤 -->
+        <div id="catsTab" class="mobile-tab">
+            <!-- 搜索栏 -->
+            <div class="search-bar">
+                <!-- 搜索输入框，id="mobileSearch" 供 JS 绑定搜索事件 -->
+                <input type="text" id="mobileSearch" placeholder="搜索猫咪..." class="search-input">
+            </div>
+            <!-- 猫咪卡片网格容器，id="mobileCatsGrid" 供 JS 动态渲染 -->
+            <div id="mobileCatsGrid" class="cats-grid">
+                <!-- 动态生成 -->
+            </div>
+        </div>
+
+        <!-- ==================== Tab 3：猫脸识别页签 ==================== -->
+        <!-- 提供摄像头拍照和相册上传两种方式进行猫咪识别 -->
+        <div id="recognizeTab" class="mobile-tab">
+            <div class="recognize-container">
+                <!-- 摄像头预览区域 -->
+                <div class="camera-preview" id="cameraPreview">
+                    <!-- 视频元素：显示摄像头实时画面，autoplay 自动播放，playsinline 移动端内联播放 -->
+                    <video id="videoElement" autoplay playsinline></video>
+                    <!-- 画布元素：用于截取视频帧进行拍照，默认隐藏 -->
+                    <canvas id="canvas" style="display:none;"></canvas>
+                </div>
+                <!-- 拍照识别按钮，id="captureBtn" 供 JS 绑定点击事件截取视频帧并上传 -->
+                <button id="captureBtn" class="btn btn-capture">📸 拍照识别</button>
+                <!-- 从相册选择按钮，id="uploadBtn" 供 JS 绑定点击事件触发文件选择 -->
+                <button id="uploadBtn" class="btn btn-secondary">📁 从相册选择</button>
+                <!-- 隐藏的文件选择器：accept="image/*" 限制只能选择图片文件 -->
+                <input type="file" id="fileInput" accept="image/*" style="display:none;">
+                <!-- 识别结果展示区域，id="recognizeResult" 供 JS 动态填充识别结果 -->
+                <div id="recognizeResult" class="recognize-result"></div>
+            </div>
+        </div>
+
+        <!-- ==================== Tab 4：个人中心页签 ==================== -->
+        <!-- 展示用户信息、投喂统计、功能菜单入口 -->
+        <div id="profileTab" class="mobile-tab">
+            <!-- 用户头像和名称区域 -->
+            <div class="profile-header">
+                <!-- 用户头像，id="profileAvatar" 供 JS 登录后更新 -->
+                <div class="profile-avatar" id="profileAvatar">👤</div>
+                <!-- 用户名称，id="profileName" 供 JS 登录后更新 -->
+                <h2 id="profileName">未登录</h2>
+            </div>
+            <!-- 个人统计数据 -->
+            <div class="profile-stats">
+                <div class="profile-stat">
+                    <!-- 用户个人投喂次数，id="myFeeds" -->
+                    <span class="stat-value" id="myFeeds">0</span>
+                    <span class="stat-label">我的投喂</span>
+                </div>
+                <div class="profile-stat">
+                    <!-- 用户爱心积分，id="myPoints" -->
+                    <span class="stat-value" id="myPoints">0</span>
+                    <span class="stat-label">爱心积分</span>
+                </div>
+            </div>
+            <!-- 功能菜单列表 -->
+            <div class="profile-menu">
+                <a href="#" class="menu-item">📋 我的申请</a>
+                <a href="#" class="menu-item">⚙️ 设置</a>
+                <a href="#" class="menu-item">ℹ️ 关于我们</a>
+                <!-- 登录/注册按钮，id="loginBtn" 供 JS 绑定登录逻辑 -->
+                <button id="loginBtn" class="menu-item btn-login">🔑 登录/注册</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 底部 Tab 导航栏 ==================== -->
+    <!-- 固定定位在底部，通过 data-tab 属性关联对应的 Tab 内容区域 id -->
+    <nav class="mobile-nav">
+        <!-- 首页 Tab 按钮，data-tab="homeTab" 对应 #homeTab 内容区域 -->
+        <a href="#" class="mobile-nav-item active" data-tab="homeTab">
+            <span class="mobile-nav-icon">🏠</span>
+            <span>首页</span>
+        </a>
+        <!-- 猫咪 Tab 按钮，data-tab="catsTab" 对应 #catsTab 内容区域 -->
+        <a href="#" class="mobile-nav-item" data-tab="catsTab">
+            <span class="mobile-nav-icon">🐱</span>
+            <span>猫咪</span>
+        </a>
+        <!-- 识别 Tab 按钮，data-tab="recognizeTab" 对应 #recognizeTab 内容区域 -->
+        <a href="#" class="mobile-nav-item" data-tab="recognizeTab">
+            <span class="mobile-nav-icon">📷</span>
+            <span>识别</span>
+        </a>
+        <!-- 我的 Tab 按钮，data-tab="profileTab" 对应 #profileTab 内容区域 -->
+        <a href="#" class="mobile-nav-item" data-tab="profileTab">
+            <span class="mobile-nav-icon">👤</span>
+            <span>我的</span>
+        </a>
+    </nav>
+
+    <!-- ==================== Toast 提示组件 ==================== -->
+    <div id="toast" class="toast"></div>
+
+    <!-- 引入全局公共 JS -->
+    <script src="/static/js/main.js?v={{ cache_bust }}"></script>
+    <!-- ==================== 页面内联脚本 ==================== -->
+    <script>
+        // ==================== Tab 标签切换逻辑 ====================
+        // 遍历所有底部导航项，点击时切换激活状态和对应的内容页签
+        document.querySelectorAll('.mobile-nav-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                // 从 data-tab 属性获取目标页签的 id
+                const tabId = item.dataset.tab;
+                
+                // 移除所有导航项和内容页签的 active 状态
+                document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
+                document.querySelectorAll('.mobile-tab').forEach(t => t.classList.remove('active'));
+                
+                // 设置当前项和对应页签为激活状态
+                item.classList.add('active');
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+
+        // ==================== 摄像头初始化 ====================
+        // 请求后置摄像头权限，将视频流绑定到 video 元素
+        async function initCamera() {
+            try {
+                // facingMode: 'environment' 优先使用后置摄像头（适合拍猫咪）
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                document.getElementById('videoElement').srcObject = stream;
+            } catch (error) {
+                showToast('无法访问摄像头', 'error');
+            }
+        }
+
+        // ==================== 拍照识别功能 ====================
+        // 点击拍照按钮：从视频流截取当前帧，转为 Blob 后上传到识别 API
+        document.getElementById('captureBtn').addEventListener('click', async () => {
+            const video = document.getElementById('videoElement');
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            
+            // 设置画布尺寸与视频帧尺寸一致
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            // 将视频当前帧绘制到画布
+            context.drawImage(video, 0, 0);
+            
+            // 将画布内容转为 JPEG Blob 并上传
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append('image', blob, 'capture.jpg');
+                
+                try {
+                    const response = await fetch('/api/recognize', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+                    displayRecognizeResult(data);
+                } catch (error) {
+                    showToast('识别失败', 'error');
+                }
+            });
+        });
+
+        // ==================== 文件上传识别功能 ====================
+        // 点击"从相册选择"按钮触发隐藏的文件选择器
+        document.getElementById('uploadBtn').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        // 文件选择完成后自动上传识别
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            try {
+                const response = await fetch('/api/recognize', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                displayRecognizeResult(data);
+            } catch (error) {
+                showToast('识别失败', 'error');
+            }
+        });
+
+        // ==================== 显示识别结果 ====================
+        // 根据置信度判断是否识别成功：>0.7 显示猫咪信息，否则提示未识别
+        function displayRecognizeResult(data) {
+            const resultDiv = document.getElementById('recognizeResult');
+            if (data.confidence > 0.7) {
+                // 识别成功：显示猫咪名称、置信度，并提供投喂按钮
+                resultDiv.innerHTML = `
+                    <div class="result-success">
+                        <h3>🎉 识别成功！</h3>
+                        <p>这是 <strong>${data.cat_name}</strong></p>
+                        <p>置信度：${(data.confidence * 100).toFixed(1)}%</p>
+                        <button class="btn btn-feed" onclick="feedCat('${data.cat_id}')">🍖 投喂</button>
+                    </div>
+                `;
+            } else {
+                // 识别失败：提示不在档案中，提供登记新猫入口
+                resultDiv.innerHTML = `
+                    <div class="result-unknown">
+                        <h3>❓ 无法识别</h3>
+                        <p>这只猫咪不在我们的档案中</p>
+                        <button class="btn btn-primary" onclick="showUploadForm()">📝 登记新猫</button>
+                    </div>
+                `;
+            }
+        }
+
+        // ==================== 加载移动端数据 ====================
+        // 并行请求猫咪列表和投喂记录，渲染到对应的 Tab 页签中
+        async function loadMobileData() {
+            try {
+                const [catsRes, feedsRes] = await Promise.all([
+                    fetch('/api/cats'),              // 获取猫咪列表
+                    fetch('/api/feed-logs?limit=5')  // 获取最近 5 条投喂记录
+                ]);
+                
+                const catsData = await catsRes.json();
+                const feedsData = await feedsRes.json();
+                
+                // 渲染猫咪档案 Tab 的卡片网格
+                const catsGrid = document.getElementById('mobileCatsGrid');
+                catsGrid.innerHTML = catsData.cats.map(cat => `
+                    <div class="cat-card" onclick="showCatDetail('${cat.id}')">
+                        <div class="cat-card-avatar" style="background:${cat.color || '#d88da3'}">${cat.emoji || '🐱'}</div>
+                        <div class="cat-card-info">
+                            <h3>${cat.name}</h3>
+                            <p>📍 ${cat.location}</p>
+                        </div>
+                    </div>
+                `).join('');
+                
+                // 渲染首页 Tab 的投喂记录列表
+                const feedLogs = document.getElementById('mobileFeedLogs');
+                feedLogs.innerHTML = feedsData.logs.map(log => `
+                    <div class="log-item">
+                        <span class="log-time">${log.time}</span>
+                        <span class="log-user">${log.user}</span>
+                        <span class="log-action">投喂了${log.cat_name}</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('加载数据失败:', error);
+            }
+        }
+
+        // ==================== 页面初始化 ====================
+        // 加载数据并初始化摄像头
+        loadMobileData();
+        initCamera();
+    </script>
+</body>
+</html>

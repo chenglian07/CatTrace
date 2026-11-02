@@ -1,0 +1,589 @@
+<!-- ============================================================
+     移动端识别页模板 (mobile_recognize.html)
+     功能：独立的猫脸识别页面，支持摄像头实时拍照和相册图片上传，
+           识别成功显示猫咪详细信息（含置信度进度条），识别失败提供
+           登记新猫入口（弹出表单 Modal 收集猫咪信息并提交）
+     技术栈：Jinja2 模板 + 原生 JS + getUserMedia API + Canvas 截帧
+     API 依赖：/api/recognize（POST 识别）、/api/feed（POST 投喂）、
+               /api/cat/register（POST 登记新猫）
+     ============================================================ -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 视口设置：禁止手动缩放 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>猫脸识别 - 猫迹 CatTrace</title>
+    <link rel="stylesheet" href="/static/css/style.css?v={{ cache_bust }}">
+    <meta name="theme-color" content="#d88da3">
+    <!-- ==================== 页面内联样式 ==================== -->
+    <!-- 识别页专用样式：摄像头区域、覆盖框、控制按钮、结果展示、加载动画 -->
+    <style>
+        /* 识别页面整体容器：最小高度撑满视口 */
+        .recognize-page {
+            min-height: 100vh;
+            padding-bottom: 20px;
+        }
+        /* 页面头部区域 */
+        .recognize-header {
+            padding: 20px;
+            text-align: center;
+        }
+        .recognize-header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .recognize-header p {
+            color: #666;
+            margin-top: 10px;
+        }
+        /* 摄像头容器：黑色背景圆角卡片，居中显示 */
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        /* 视频元素：宽度撑满容器 */
+        #videoElement {
+            width: 100%;
+            display: block;
+        }
+        /* 摄像头覆盖框：半透明粉色边框，居中定位，提示用户对准猫咪 */
+        .camera-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 250px;
+            height: 250px;
+            border: 3px solid rgba(216, 141, 163, 0.8);
+            border-radius: 20px;
+            pointer-events: none; /* 不阻挡点击事件穿透 */
+        }
+        /* 覆盖框左上角和右下角的装饰性直角标记（通过伪元素实现） */
+        .camera-overlay::before,
+        .camera-overlay::after {
+            content: '';
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-color: #d88da3;
+            border-style: solid;
+        }
+        /* 左上角直角标记 */
+        .camera-overlay::before {
+            top: -3px;
+            left: -3px;
+            border-width: 3px 0 0 3px;
+        }
+        /* 右下角直角标记 */
+        .camera-overlay::after {
+            bottom: -3px;
+            right: -3px;
+            border-width: 0 3px 3px 0;
+        }
+        /* 摄像头控制按钮区域：横向居中排列 */
+        .camera-controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 30px 20px;
+        }
+        /* 拍照按钮：大圆形，品牌粉色背景，白色边框，模拟相机快门 */
+        .capture-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #d88da3;
+            border: 4px solid white;
+            box-shadow: 0 4px 20px rgba(216, 141, 163, 0.4);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+        }
+        /* 从相册选择按钮：圆角药丸样式，浅灰背景 */
+        .upload-btn {
+            padding: 15px 30px;
+            border-radius: 25px;
+            background: #f5f0eb;
+            border: 2px solid #efe1d2;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        /* 识别结果容器：白色卡片，默认隐藏，添加 show 类后显示 */
+        .result-container {
+            margin: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .result-container.show {
+            display: block;
+        }
+        /* 识别成功样式：居中排列，绿色标题 */
+        .result-success {
+            text-align: center;
+        }
+        .result-success .result-icon {
+            font-size: 60px;
+            margin-bottom: 15px;
+        }
+        .result-success h3 {
+            color: #28a745; /* 成功绿色 */
+            margin: 0 0 10px 0;
+        }
+        /* 识别失败/未知样式：居中排列，黄色标题 */
+        .result-unknown {
+            text-align: center;
+        }
+        .result-unknown .result-icon {
+            font-size: 60px;
+            margin-bottom: 15px;
+        }
+        .result-unknown h3 {
+            color: #ffc107; /* 警告黄色 */
+            margin: 0 0 10px 0;
+        }
+        /* 猫咪信息卡片：浅灰背景圆角区域，展示识别后的猫咪详细数据 */
+        .cat-info {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        /* 猫咪信息行：横向排列标签和值，底部分隔线 */
+        .cat-info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .cat-info-row:last-child {
+            border-bottom: none;
+        }
+        /* 置信度进度条：灰色底轨 + 粉色渐变填充，直观展示匹配程度 */
+        .confidence-bar {
+            height: 8px;
+            background: #eee;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        /* 置信度填充条：渐变粉色，带宽度过渡动画 */
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #d88da3, #c8708b);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        /* 加载状态区域：默认隐藏，添加 show 类后显示 */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+        .loading.show {
+            display: block;
+        }
+        /* 加载旋转动画：粉色顶部弧线的圆形 spinner */
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #eee;
+            border-top-color: #d88da3;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        /* 旋转动画关键帧：360 度无限循环 */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- ==================== 识别页面主容器 ==================== -->
+    <div class="recognize-page">
+        <!-- ==================== 页面头部 ==================== -->
+        <div class="recognize-header">
+            <h1>📷 猫脸识别</h1>
+            <p>对准猫咪拍照，自动识别身份</p>
+        </div>
+
+        <!-- ==================== 摄像头区域 ==================== -->
+        <!-- 包含实时视频流和覆盖框提示 -->
+        <div class="camera-container">
+            <!-- 视频元素：显示摄像头实时画面，autoplay 自动播放，playsinline 移动端内联播放（不全屏） -->
+            <video id="videoElement" autoplay playsinline></video>
+            <!-- 摄像头覆盖框：纯 CSS 装饰元素，提示用户将猫咪对准此区域 -->
+            <div class="camera-overlay"></div>
+        </div>
+
+        <!-- ==================== 摄像头控制按钮区域 ==================== -->
+        <div class="camera-controls">
+            <!-- 从相册选择按钮，id="uploadBtn" 供 JS 绑定点击事件触发隐藏的文件选择器 -->
+            <button class="upload-btn" id="uploadBtn">
+                📁 从相册选择
+            </button>
+            <!-- 拍照按钮：大圆形快门按钮，id="captureBtn" 供 JS 绑定截帧上传事件 -->
+            <button class="capture-btn" id="captureBtn">📸</button>
+        </div>
+
+        <!-- 隐藏的文件选择器：accept="image/*" 限制只能选择图片，由"从相册选择"按钮间接触发 -->
+        <input type="file" id="fileInput" accept="image/*" style="display:none;">
+
+        <!-- ==================== 加载状态指示器 ==================== -->
+        <!-- 识别请求进行中时显示，通过添加/移除 show 类控制可见性 -->
+        <div class="loading" id="loading">
+            <div class="loading-spinner"></div>
+            <p>正在识别中...</p>
+        </div>
+
+        <!-- ==================== 识别结果展示区域 ==================== -->
+        <!-- 识别完成后由 JS 动态填充内容，通过 show 类控制显示 -->
+        <div class="result-container" id="resultContainer">
+            <!-- 动态生成结果 -->
+        </div>
+    </div>
+
+    <!-- ==================== Toast 提示组件 ==================== -->
+    <div id="toast" class="toast"></div>
+
+    <!-- 引入全局公共 JS -->
+    <script src="/static/js/main.js?v={{ cache_bust }}"></script>
+    <!-- ==================== 页面内联脚本 ==================== -->
+    <script>
+        // 保存摄像头视频流引用，用于页面卸载时释放摄像头资源
+        let videoStream = null;
+
+        // ==================== 摄像头初始化 ====================
+        // 请求后置摄像头权限，将视频流绑定到 video 元素
+        async function initCamera() {
+            try {
+                // facingMode: 'environment' 优先使用后置摄像头（适合拍摄猫咪）
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                document.getElementById('videoElement').srcObject = videoStream;
+            } catch (error) {
+                console.error('摄像头访问失败:', error);
+                showToast('无法访问摄像头，请检查权限设置', 'error');
+            }
+        }
+
+        // ==================== 拍照识别功能 ====================
+        // 点击拍照按钮：从视频流截取当前帧，转为 JPEG Blob 后上传到识别 API
+        document.getElementById('captureBtn').addEventListener('click', async () => {
+            const video = document.getElementById('videoElement');
+            // 动态创建 canvas 元素用于截帧（不占用 DOM 中的 canvas）
+            const canvas = document.createElement('canvas');
+            
+            // 设置画布尺寸与视频帧尺寸一致，保证截图清晰度
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const context = canvas.getContext('2d');
+            // 将视频当前帧绘制到画布上
+            context.drawImage(video, 0, 0);
+            
+            // 将画布内容转为 Blob 对象，调用统一的上传识别函数
+            canvas.toBlob(async (blob) => {
+                await uploadAndRecognize(blob, 'capture.jpg');
+            });
+        });
+
+        // ==================== 文件上传识别功能 ====================
+        // 点击"从相册选择"按钮，触发隐藏的文件选择器
+        document.getElementById('uploadBtn').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        // 文件选择完成后自动上传识别
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            await uploadAndRecognize(file, file.name);
+            // 重置文件选择器的值，允许用户重复选择同一文件
+            e.target.value = '';
+        });
+
+        // ==================== 统一的上传与识别函数 ====================
+        // 将图片文件上传到 /api/recognize，同时管理加载状态的显示/隐藏
+        async function uploadAndRecognize(file, filename) {
+            // 保存文件引用到全局变量，供后续"登记新猫"功能使用
+            window.lastUploadedFile = file;
+
+            const formData = new FormData();
+            formData.append('image', file, filename);
+            
+            // 显示加载动画，隐藏之前的结果
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('resultContainer').classList.remove('show');
+            
+            try {
+                const response = await fetch('/api/recognize', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                showToast('识别失败，请重试', 'error');
+            } finally {
+                // 无论成功失败都隐藏加载动画
+                document.getElementById('loading').classList.remove('show');
+            }
+        }
+
+        // ==================== 显示识别结果 ====================
+        // 根据 API 返回的 matched 和 cat_id 字段判断识别是否成功
+        function displayResult(data) {
+            const container = document.getElementById('resultContainer');
+            // 显示结果容器
+            container.classList.add('show');
+            
+            // 使用 matched 字段判断是否识别成功
+            if (data.matched && data.cat_id) {
+                // ---- 识别成功：展示猫咪详细信息 ----
+                container.innerHTML = `
+                    <div class="result-success">
+                        <div class="result-icon">🎉</div>
+                        <h3>识别成功！</h3>
+                        <p>这是 <strong>${data.cat_name || '未知猫咪'}</strong></p>
+                        
+                        <!-- 猫咪信息卡片：展示置信度、位置、状态、健康等数据 -->
+                        <div class="cat-info">
+                            <!-- 置信度行 -->
+                            <div class="cat-info-row">
+                                <span>置信度</span>
+                                <span>${(data.confidence * 100).toFixed(1)}%</span>
+                            </div>
+                            <!-- 置信度可视化进度条 -->
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width: ${data.confidence * 100}%"></div>
+                            </div>
+                            <!-- 位置信息行 -->
+                            <div class="cat-info-row">
+                                <span>位置</span>
+                                <span>${data.cat_location || '未知'}</span>
+                            </div>
+                            <!-- 状态信息行 -->
+                            <div class="cat-info-row">
+                                <span>状态</span>
+                                <span>${data.cat_status || '未知'}</span>
+                            </div>
+                            <!-- 健康信息行（仅在有数据时显示） -->
+                            ${data.cat_health ? `
+                            <div class="cat-info-row">
+                                <span>健康</span>
+                                <span>${data.cat_health}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                        
+                        <!-- 猫咪描述（仅在有数据时显示） -->
+                        ${data.cat_description ? `
+                        <p style="font-size: 14px; color: #666; margin: 10px 0;">${data.cat_description}</p>
+                        ` : ''}
+                        
+                        <!-- 操作按钮：投喂 + 查看详情 -->
+                        <button class="btn btn-feed" onclick="feedCat('${data.cat_id}')">
+                            🍖 投喂
+                        </button>
+                        <button class="btn btn-secondary" onclick="window.location.href='/cats?id=${data.cat_id}'">
+                            查看详情
+                        </button>
+                    </div>
+                `;
+            } else {
+                // ---- 识别失败：提示不在档案中，提供登记新猫和重新识别入口 ----
+                container.innerHTML = `
+                    <div class="result-unknown">
+                        <div class="result-icon">❓</div>
+                        <h3>无法识别</h3>
+                        <p>这只猫咪不在我们的档案中</p>
+                        
+                        <!-- 未识别时也展示置信度数据 -->
+                        <div class="cat-info">
+                            <div class="cat-info-row">
+                                <span>置信度</span>
+                                <span>${(data.confidence * 100).toFixed(1)}%</span>
+                            </div>
+                        </div>
+                        
+                        <!-- 操作按钮：登记新猫 + 重新识别 -->
+                        <button class="btn btn-primary" onclick="showUploadForm()">
+                            📝 登记新猫
+                        </button>
+                        <button class="btn btn-secondary" onclick="location.reload()">
+                            重新识别
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // ==================== 投喂功能 ====================
+        // 向 /api/feed 发送投喂请求，处理登录检测和错误提示
+        async function feedCat(catId) {
+            try {
+                const response = await fetch('/api/feed', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    // 注意：catId 转为整数传递
+                    body: JSON.stringify({ cat_id: parseInt(catId) })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    // 更新投喂数显示（简易实现：找到最后一行信息更新文本）
+                    const feedCountEl = document.querySelector('.cat-info-row span:last-child');
+                    if (feedCountEl) {
+                        feedCountEl.textContent = '投喂 +1';
+                    }
+                } else {
+                    if (data.need_login) {
+                        // 需要登录时提示并弹出登录弹窗
+                        showToast('请先登录后再投喂', 'error');
+                        showLoginModal();
+                    } else {
+                        showToast(data.message || '投喂失败', 'error');
+                    }
+                }
+            } catch (error) {
+                console.error('投喂失败:', error);
+                showToast('网络错误，请重试', 'error');
+            }
+        }
+
+        // ==================== 登记新猫表单弹窗 ====================
+        // 动态创建 Modal 弹窗，包含猫咪信息登记表单
+        function showUploadForm() {
+            // 动态创建 Modal 遮罩层和内容容器
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            // 内联样式实现全屏遮罩 + 居中弹窗
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
+            // 表单内容：包含名称、昵称、性别、年龄、毛色、位置、描述等字段
+            modal.innerHTML = `
+                <div style="background:white;border-radius:16px;padding:24px;max-width:400px;width:90%;max-height:80vh;overflow-y:auto;">
+                    <h3 style="margin:0 0 20px 0;">📝 登记新猫咪</h3>
+                    <form id="registerCatForm">
+                        <div style="margin-bottom:15px;">
+                            <label style="display:block;margin-bottom:5px;font-weight:bold;">猫咪名称 *</label>
+                            <input type="text" name="name" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;">
+                        </div>
+                        <div style="margin-bottom:15px;">
+                            <label style="display:block;margin-bottom:5px;font-weight:bold;">昵称</label>
+                            <input type="text" name="nickname" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;">
+                        </div>
+                        <div style="margin-bottom:15px;">
+                            <label style="display:block;margin-bottom:5px;font-weight:bold;">性别</label>
+                            <select name="gender" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;">
+                                <option value="unknown">未知</option>
+                                <option value="male">公</option>
+                                <option value="female">母</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom:15px;">
+                            <label style="display:block;margin-bottom:5px;font-weight:bold;">年龄</label>
+                            <input type="text" name="age" placeholder="例如：1 岁半" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;">
+                        </div>
+                        <div style="margin-bottom:15px;">
+                            <label style="display:block;margin-bottom:5px;font-weight:bold;">毛色</label>
+                            <input type="text" name="color" placeholder="例如：橘白相间" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;">
+                        </div>
+                        <div style="margin-bottom:15px;">
+                            <label style="display:block;margin-bottom:5px;font-weight:bold;">发现位置</label>
+                            <input type="text" name="location" placeholder="例如：A 区 - 教学楼后" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;">
+                        </div>
+                        <div style="margin-bottom:20px;">
+                            <label style="display:block;margin-bottom:5px;font-weight:bold;">描述</label>
+                            <textarea name="description" rows="3" placeholder="猫咪的性格特点、行为习惯等" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;"></textarea>
+                        </div>
+                        <div style="display:flex;gap:10px;">
+                            <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove()" style="flex:1;">取消</button>
+                            <button type="submit" class="btn btn-primary" style="flex:1;">提交登记</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // 绑定表单提交事件：将表单数据 + 之前拍摄的图片一起上传
+            document.getElementById('registerCatForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                
+                // 获取之前拍摄/上传的图片文件引用
+                let imageFile = null;
+                
+                // 从全局变量中获取之前上传的图片（由 uploadAndRecognize 保存）
+                if (window.lastUploadedFile) {
+                    imageFile = window.lastUploadedFile;
+                } else {
+                    showToast('请重新上传猫咪照片', 'error');
+                    return;
+                }
+                
+                // 组装提交数据：图片文件 + 表单字段
+                const submitData = new FormData();
+                submitData.append('image', imageFile, imageFile.name);
+                for (let [key, value] of formData) {
+                    submitData.append(key, value);
+                }
+                
+                try {
+                    const response = await fetch('/api/cat/register', {
+                        method: 'POST',
+                        body: submitData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showToast(data.message, 'success');
+                        modal.remove(); // 关闭弹窗
+                        // 延迟 1.5 秒后跳转到新登记的猫咪详情页
+                        setTimeout(() => {
+                            window.location.href = `/cats?id=${data.cat_id}`;
+                        }, 1500);
+                    } else {
+                        showToast(data.message || '登记失败', 'error');
+                    }
+                } catch (error) {
+                    console.error('登记失败:', error);
+                    showToast('网络错误，请重试', 'error');
+                }
+            });
+        }
+
+        // ==================== 页面初始化 ====================
+        // 页面加载时立即初始化摄像头
+        initCamera();
+
+        // ==================== 页面卸载时释放摄像头资源 ====================
+        // 监听 beforeunload 事件，停止所有视频轨道以释放摄像头
+        window.addEventListener('beforeunload', () => {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+</html>

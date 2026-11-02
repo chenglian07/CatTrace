@@ -1,284 +1,635 @@
+<!-- ============================================================
+     猫迹 CatTrace 首页模板 (index.html)
+     功能：城市流浪猫生命共同体平台的主页面
+     包含：导航栏、Hero 区、猫屋地图、云直播预览、AI 日记、
+           猫咪档案、领养中心、公益参与、社区共治、管理中心、
+           侧边栏（守护摘要/领养进度/人气榜）、页脚、模态框等
+     ============================================================ -->
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light">
+<!-- lang="zh-CN" 声明页面语言为简体中文，有利于 SEO 和无障碍访问 -->
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CatTrace · 流浪猫科学救助平台</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#ff8fb0">
+<!-- ===== 头部区域：元信息、资源引用 ===== -->
+<!-- 字符编码声明，使用 UTF-8 支持中文 -->
+<meta charset="UTF-8">
+<!-- 视口设置：确保页面在移动设备上正确缩放，width=device-width 适配屏幕宽度 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 页面标题，显示在浏览器标签栏 -->
+<title>猫迹 CatTrace · 城市流浪猫生命共同体</title>
+<!-- 页面描述，用于 SEO 搜索引擎优化 -->
+<meta name="description" content="猫迹 CatTrace：AI 识别、云直播、科学投喂、领养与社区共治，让每一只流浪猫都被温柔以待。">
+<!-- PWA (Progressive Web App) 清单文件引用，定义应用的图标、名称、启动方式等 -->
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<!-- 浏览器主题色设置，影响移动端浏览器地址栏/状态栏颜色，#D68DA2 为品牌粉色 -->
+<meta name="theme-color" content="#D68DA2">
+<!-- 首页专属样式表，v=cache_bust 为缓存破坏参数，确保更新后浏览器加载最新 CSS -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/home.css', v=cache_bust) }}">
 </head>
 <body>
-    <!-- ========== 导航栏 ========== -->
-    <nav class="navbar">
-        <div class="nav-brand">
-            🐱 CatTrace
-            <span class="nav-tagline">看见每一只猫，守护每一个家</span>
-        </div>
-        <div class="nav-links">
-            <a href="/" class="active">🏠 首页</a>
-            <a href="/cats">📋 猫咪档案</a>
-            <a href="/diary">📖 日记</a>
-            <a href="/adopt">🏡 领养中心</a>
-            <button onclick="toggleDarkMode()" class="dark-mode-toggle">🌓</button>
-            <button onclick="showLogin()" class="nav-login-btn">👤 登录</button>
-        </div>
-    </nav>
+<!-- .shell 为页面最外层包裹容器，用于控制整体最大宽度和居中 -->
+<div class="shell">
 
-    <div class="main-content">
-        <!-- ========== Hero 区域 ========== -->
-        <section class="hero">
-            <h1>🐱 CatTrace</h1>
-            <p class="slogan">看见每一只猫，守护每一个家。</p>
-            <div class="hero-stats">
-                <div class="hero-stat">
-                    <div class="value" id="statCats">12</div>
-                    <div class="label">建档猫咪</div>
-                </div>
-                <div class="hero-stat">
-                    <div class="value" id="statFeedings">3,427</div>
-                    <div class="label">累计投喂</div>
-                </div>
-                <div class="hero-stat">
-                    <div class="value" id="statAdoptions">5</div>
-                    <div class="label">成功领养</div>
+    <!-- ===== 顶部导航栏 ===== -->
+    <!-- .topbar 固定定位在页面顶部，包含品牌标识、导航菜单、搜索框和用户操作 -->
+    <header class="topbar">
+        <!-- .topbar-inner 导航栏内部弹性布局容器 -->
+        <div class="topbar-inner">
+            <!-- .brand 品牌标识区域：Logo + 文字 -->
+            <div class="brand">
+                <!-- 品牌图标，使用 emoji 作为 Logo -->
+                <div class="brand-mark">🐱</div>
+                <!-- .brand-text 品牌文字区域 -->
+                <div class="brand-text">
+                    <strong>猫迹 CatTrace</strong>
+                    <span>城市流浪猫生命共同体</span>
                 </div>
             </div>
-        </section>
 
-        <!-- ========== 快速操作 ========== -->
-        <div class="quick-actions">
-            <button class="btn btn-primary" onclick="location.href='/cats'">📋 查看猫咪档案</button>
-            <button class="btn btn-secondary" onclick="scrollToLive()">📡 观看实时直播</button>
-            <button class="btn btn-secondary" onclick="location.href='/adopt'">🏡 申请领养</button>
-            <button class="btn btn-detail" onclick="scrollToDiary()">📖 猫咪日记</button>
-        </div>
+            <!-- .menu 主导航菜单区域 -->
+            <!-- id="menu" 供 JS 绑定导航滚动定位逻辑，CSS 也通过此 id 进行样式控制 -->
+            <nav class="menu" id="menu">
+                <!-- 首页导航按钮，默认激活状态；data-target 指定点击后平滑滚动到的目标 section id -->
+                <button class="active" data-target="heroSection">首页</button>
+                <!-- 云直播为独立页面跳转（非锚点滚动），使用 <a> 标签 -->
+                <a href="/live" class="menu-link">云直播</a>
+                <!-- 各导航按钮的 data-target 对应下方各 section 的 id，JS 监听点击事件实现平滑滚动 -->
+                <button data-target="catsSection">猫咪档案</button>
+                <button data-target="adoptSection">领养中心</button>
+                <button data-target="govSection">社区共治</button>
+                <!-- 管理中心导航按钮，滚动到 insightSection 区域 -->
+                <button data-target="insightSection">管理中心</button>
+            </nav>
 
-        <!-- ========== 实时直播区 ========== -->
-        <section class="live-feed" id="liveSection">
-            <div class="live-badge" id="liveBadge" data-state="connecting">⚪ 连接中</div>
-            <div class="live-viewer-count">👁 <span id="viewerCount">42</span> 人在看</div>
-            <div class="live-camera" id="liveCamera">
-                <!-- 真实画面：由 /api/live/info 返回地址后挂上去；失败时保留下面的占位动画 -->
-                <img class="live-stream" id="liveStream" alt="树莓派实时画面" hidden>
-                <div class="live-cat-emoji" id="liveCatEmoji" onclick="bounceCat()">🐱</div>
-                <div class="live-offline" id="liveOffline" hidden>
-                    <span id="liveOfflineText">📡 摄像头未连接</span>
-                    <button class="live-retry" id="liveRetry" type="button">重试</button>
-                </div>
+            <!-- .search 搜索框区域 -->
+            <div class="search">
+                <!-- 搜索图标 -->
+                <span>🔎</span>
+                <!-- #searchInput 搜索输入框，JS 监听输入事件实现实时搜索猫咪/猫屋/关键词 -->
+                <input id="searchInput" placeholder="搜索猫咪 / 猫屋 / 关键词">
             </div>
-            <div class="live-env-bar">
-                <span>🌡 温度: <strong id="envTemp">26</strong>°C</span>
-                <span>💧 湿度: <strong id="envHumidity">58</strong>%</span>
-                <span>🍖 今日投喂: <strong id="envTodayFeed">12</strong> 次</span>
-                <span>🎬 视频: <strong id="liveStreamFps">--</strong> fps</span>
-                <span>🎞 识别: <strong id="liveFps">--</strong> fps</span>
-                <span class="ai-verify-badge" id="aiVerifyBadge">
-                    <span class="ai-verify-pulse"></span> AI 猫脸监控中
-                </span>
-            </div>
-            <div class="live-controls">
-                <button class="btn btn-feed" id="btnFeed" onclick="remoteFeed()">
-                    🍖 投喂一份 (1元)
-                </button>
-                <button class="btn btn-secondary btn-sm" onclick="showCatInfo()">
-                    ℹ️ 当前猫咪信息
-                </button>
-                <button class="btn btn-detail btn-sm" onclick="shareLive()">
-                    📤 分享直播间
+
+            <!-- .top-actions 顶部右侧操作区域：消息提醒 + 用户登录 -->
+            <div class="top-actions">
+                <!-- #notifyBtn 消息提醒按钮，点击后弹出通知面板 -->
+                <!-- id="notifyBtn" 供 JS 绑定点击事件 -->
+                <button class="icon-btn" id="notifyBtn" title="消息提醒">🔔<!-- #notifyDot 未读消息红点，hidden 属性默认隐藏，JS 根据未读数动态显示 --><span class="notify-dot" id="notifyDot" hidden></span></button>
+                <!-- #loginBtn 用户登录/头像按钮，点击触发登录流程或弹出用户菜单 -->
+                <button class="user-chip" id="loginBtn">
+                    <!-- #userAvatar 用户头像，显示用户名首字或默认头像 -->
+                    <span class="avatar" id="userAvatar">爱</span>
+                    <!-- #userName 用户名称显示，默认显示"你好，爱心用户"，登录后替换为真实用户名 -->
+                    <span id="userName">你好，爱心用户</span>
                 </button>
             </div>
-        </section>
+        </div>
+    </header>
 
-        <!-- ========== 投喂透明看板 ========== -->
-        <section class="card resource-flow" id="resourceFlow">
-            <h2 class="section-title">💰 本月资源流向</h2>
-            <div class="resource-flow-bar">
-                <div class="resource-flow-segment unneutered" style="width:72%">未绝育猫 72%</div>
-                <div class="resource-flow-segment neutered" style="width:28%">已绝育猫 28%</div>
-            </div>
-            <div class="resource-flow-legend">
-                <span><span class="resource-flow-dot unneutered"></span> 未绝育猫（优先）</span>
-                <span><span class="resource-flow-dot neutered"></span> 已绝育猫</span>
-            </div>
-            <div class="resource-flow-info">
-                💡 <strong>科学说明：</strong>已绝育猫已无繁殖压力，适当减少投喂可鼓励其保留自然捕食能力，更健康、更有野性。如果你想专门投喂某只已绝育猫，可使用"爱心加餐"功能。
-            </div>
-        </section>
+    <!-- ===== 失踪猫咪横幅提醒 ===== -->
+    <!-- #missingBanner 失踪提醒横幅，默认 hidden 隐藏；JS 在检测到失踪事件时移除 hidden 属性显示 -->
+    <!-- .missing-banner CSS 类提供醒目的横幅样式 -->
+    <section class="missing-banner" id="missingBanner" hidden>
+        <!-- 提醒图标 -->
+        <span>🔔</span>
+        <span>
+            <strong>失踪提醒：</strong>
+            <!-- #missingBannerText 失踪猫咪的具体信息文本，由 JS 动态填充 -->
+            <span id="missingBannerText"></span>
+        </span>
+        <!-- #missingBannerClose 关闭按钮，点击后重新隐藏横幅 -->
+        <button type="button" id="missingBannerClose" title="关闭">×</button>
+    </section>
 
-        <!-- ========== 猫咪日记模块 ========== -->
-        <section class="diary-section" id="diarySection">
-            <h2 class="section-title">📖 猫咪日记 <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;">— AI 每日自动生成</span></h2>
-            <div class="diary-cards" id="diaryCards">
-                <!-- 动态填充 -->
-            </div>
-            <div class="diary-co-create">
-                📸 你也拍了小区的猫？<strong>上传照片</strong>，AI 猫脸识别匹配后追加到猫咪日记，获得积分奖励！
-                <br>
-                <button class="diary-upload-btn" onclick="uploadCatPhoto()">📤 上传猫咪照片</button>
-            </div>
-        </section>
+    <!-- ===== 仪表盘主区域 ===== -->
+    <!-- .dashboard 仪表盘布局容器，包含 main-stack（主内容）和 sidebar（侧边栏） -->
+    <div class="dashboard">
+        <!-- .main-stack 主内容堆叠区域，包含所有核心功能模块 -->
+        <main class="main-stack">
 
-        <!-- ========== 社区共治模块 ========== -->
-        <section class="gov-section" id="govSection">
-            <div class="gov-card">
-                <div class="gov-card-header">
-                    <h3>🏘️ 社区共治中心</h3>
-                    <button class="gov-report-btn" onclick="openGovReport()">📝 提交投诉/建议</button>
-                </div>
-                <div class="gov-items">
-                    <div class="gov-item">
-                        <span class="gov-item-icon">✅</span>
-                        <div class="gov-item-content">
-                            <div class="gov-item-title">禁止清单</div>
-                            <div class="gov-item-desc">明确禁止私自捕捉、转移、遗弃猫咪等行为。违反者将终止服务并上报街道。</div>
+            <!-- ===== Hero 区（首屏大图/标语） ===== -->
+            <!-- #heroSection 首屏英雄区域，也是导航"首页"按钮的滚动目标 -->
+            <!-- .hero-grid 使用 CSS Grid 布局，左侧为宣传文案，右侧为猫屋地图 -->
+            <section class="hero-grid" id="heroSection">
+                <!-- .hero-card 左侧英雄卡片：项目介绍和行动号召 -->
+                <article class="panel hero-card">
+                    <!-- .hero-copy 文案区域 -->
+                    <div class="hero-copy">
+                        <!-- .eyebrow 小标签，显示项目名称 -->
+                        <div class="eyebrow">猫迹 CatTrace</div>
+                        <!-- 主标题，突出项目核心理念 -->
+                        <h1>每一份微小的守护，<br>都值得被看见。</h1>
+                        <!-- 项目简介描述 -->
+                        <p>让科技连接爱心，让每一只流浪猫都被温柔以待。把 AI 识别、IoT 猫屋和数据治理，变成真正有温度的日常守护。</p>
+                        <!-- .hero-actions 行动号召按钮组 -->
+                        <div class="hero-actions">
+                            <!-- #heroFeedBtn "立即参与"主按钮，JS 绑定点击事件，跳转到参与/投喂流程 -->
+                            <button class="btn btn-primary" id="heroFeedBtn">🐾 立即参与</button>
+                            <!-- #heroLearnBtn "了解项目"次按钮，JS 绑定点击事件，滚动到项目介绍区域 -->
+                            <button class="btn btn-soft" id="heroLearnBtn">了解项目</button>
+                        </div>
+                        <!-- .hero-features 功能亮点标签组，展示平台四大核心功能 -->
+                        <div class="hero-features">
+                            <span>📹 24 小时云直播</span>
+                            <span>🤖 AI 智能识别</span>
+                            <span>🍖 远程投喂</span>
+                            <span>💗 领养匹配</span>
                         </div>
                     </div>
-                    <div class="gov-item warning">
-                        <span class="gov-item-icon">⚠️</span>
-                        <div class="gov-item-content">
-                            <div class="gov-item-title">无害替代方案</div>
-                            <div class="gov-item-desc">迁移猫屋位置、分时段投喂、加强绝育计划、安装超声波驱避器等柔性方案。</div>
+                    <!-- .hero-art 右侧装饰艺术区域，展示情感化文案 -->
+                    <div class="hero-art">
+                        <div class="hero-note">一只猫咪<br>也值得被爱 ♡</div>
+                    </div>
+                </article>
+
+                <!-- ===== 城市猫屋地图卡片 ===== -->
+                <!-- .map-card 右侧地图卡片，展示猫屋分布的可视化地图 -->
+                <aside class="panel map-card">
+                    <!-- .card-head 卡片头部：标题 + 副标题 + 操作链接 -->
+                    <div class="card-head">
+                        <div>
+                            <h3>📍 城市猫屋地图</h3>
+                            <small>在线猫屋与主要活动区域</small>
+                        </div>
+                        <small>查看全部 →</small>
+                    </div>
+                    <!-- #mapView 地图视图容器，JS 在此渲染猫屋标记点 -->
+                    <!-- CSS 提供地图背景样式（模拟地图效果） -->
+                    <div class="map-view" id="mapView">
+                        <!-- #mapMarkers 猫屋标记点容器，JS 动态插入各猫屋的位置标记 -->
+                        <div class="map-markers" id="mapMarkers"></div>
+                        <!-- .map-floating 地图浮动信息面板，显示当前选中猫屋的详情 -->
+                        <div class="map-floating">
+                            <!-- #mapSpotName 当前选中猫屋名称，JS 动态更新 -->
+                            <strong id="mapSpotName">加载中…</strong>
+                            <!-- #mapSpotDesc 当前选中猫屋描述，JS 动态更新 -->
+                            <p id="mapSpotDesc">正在获取猫屋数据</p>
+                            <!-- #mapLiveBtn "进入直播"按钮，JS 绑定点击跳转到对应猫屋的直播页面 -->
+                            <button class="map-mini-btn" id="mapLiveBtn">进入直播</button>
                         </div>
                     </div>
-                    <div class="gov-item">
-                        <span class="gov-item-icon">📅</span>
-                        <div class="gov-item-content">
-                            <div class="gov-item-title">两周闭环执行计划</div>
-                            <div class="gov-item-desc">投诉提交 → 自动生成治理建议报告 → 物业执行 → 7天反馈 → 14天结案。</div>
+                </aside>
+            </section>
+
+            <!-- ===== 统计数据行 ===== -->
+            <!-- #statsRow 统计概览行，JS 动态渲染平台核心数据（如猫咪总数、投喂次数、在线设备等） -->
+            <!-- 每个统计项以卡片形式水平排列 -->
+            <section class="stats-row" id="statsRow"></section>
+
+            <!-- ===== 内容网格区域 ===== -->
+            <!-- .content-grid 主内容网格布局，左侧 .left-stack 为主要功能模块堆叠，右侧 .sidebar 为侧边栏 -->
+            <section class="content-grid">
+                <!-- .left-stack 左侧主内容堆叠区域 -->
+                <div class="left-stack">
+
+                    <!-- .dual-grid 双列网格，放置云直播和 AI 日记两个并排卡片 -->
+                    <div class="dual-grid">
+
+                        <!-- ===== 实时云直播预览卡片 ===== -->
+                        <!-- #liveSection 云直播预览卡片，data-live-entry="true" 标记为直播入口 -->
+                        <!-- JS 通过 data-live-entry 属性识别该元素为直播入口，绑定点击跳转到 /live 页面 -->
+                        <!-- style="cursor:pointer" 表示整个卡片可点击 -->
+                        <article class="panel live-card" id="liveSection" data-live-entry="true" style="cursor:pointer;">
+                            <!-- 卡片头部 -->
+                            <div class="card-head">
+                                <div>
+                                    <h3>📺 实时云直播</h3>
+                                    <small>看见猫屋，也看见变化</small>
+                                </div>
+                                <small>进入直播 →</small>
+                            </div>
+                            <!-- .live-video 直播视频预览区域 -->
+                            <div class="live-video">
+                                <!-- .live-tags 直播状态标签组 -->
+                                <div class="live-tags">
+                                    <!-- LIVE 直播中标签，红色闪烁表示正在直播 -->
+                                    <span class="pill live">● LIVE</span>
+                                    <!-- #aiStatus AI 识别状态标签，JS 动态更新当前识别到的猫咪信息 -->
+                                    <span class="pill ai" id="aiStatus">AI 已识别：有猫</span>
+                                </div>
+                                <!-- #viewerCount 当前观看人数，JS 动态更新 -->
+                                <div class="live-room" id="viewerCount">-- 人正在观看</div>
+                                <!-- .cat-stage 猫咪展示舞台区域 -->
+                                <div class="cat-stage">
+                                    <!-- #liveCatEmoji 当前直播猫咪 emoji 图标，JS 动态更新 -->
+                                    <div class="cat-hero" id="liveCatEmoji">🐱</div>
+                                </div>
+                            </div>
+                            <!-- .live-preview-info 直播预览信息区域 -->
+                            <div class="live-preview-info">
+                                <div class="current-cat">
+                                    <!-- #liveCatTitle 当前猫咪名称，JS 动态更新 -->
+                                    <strong id="liveCatTitle">加载中…</strong>
+                                    <!-- #liveCatLocation 当前猫咪所在位置，JS 动态更新 -->
+                                    <p id="liveCatLocation">正在获取猫咪状态</p>
+                                </div>
+                                <!-- "进入直播"按钮，跳转到独立直播页面 -->
+                                <button class="btn btn-primary btn-block">进入直播 →</button>
+                            </div>
+                        </article>
+
+                        <!-- ===== AI 猫咪日记卡片 ===== -->
+                        <!-- .diary-card AI 自动生成的猫咪每日活动日记 -->
+                        <article class="panel diary-card">
+                            <!-- 卡片头部 -->
+                            <div class="card-head">
+                                <div>
+                                    <h3>📖 AI 猫咪日记</h3>
+                                    <small>每日自动生成 + 现场片段</small>
+                                </div>
+                                <!-- #diaryRefreshBtn 刷新按钮，JS 绑定点击事件重新获取日记数据 -->
+                                <small id="diaryRefreshBtn" style="cursor:pointer;">刷新 →</small>
+                            </div>
+                            <!-- .featured-diary 精选日记展示区域 -->
+                            <div class="featured-diary">
+                                <!-- 日记头部：猫咪名称 + 时间 -->
+                                <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
+                                    <!-- #diaryCatName 日记所属猫咪名称标签 -->
+                                    <span class="cat-chip" id="diaryCatName">🐱 加载中</span>
+                                    <!-- #diaryTime 日记生成时间显示 -->
+                                    <span class="diary-time" id="diaryTime">--</span>
+                                </div>
+                                <!-- #diaryEntries 日记条目列表容器，JS 动态渲染日记内容 -->
+                                <div class="diary-entries" id="diaryEntries"></div>
+                                <!-- #diaryThumbs 日记缩略图行，JS 动态插入猫咪活动照片缩略图 -->
+                                <div class="thumb-row" id="diaryThumbs"></div>
+                                <!-- .diary-actions 日记操作按钮组 -->
+                                <div class="diary-actions">
+                                    <!-- #viewCatBtn "查看猫咪档案"按钮，JS 绑定点击跳转到猫咪详情页 -->
+                                    <button class="btn btn-soft" id="viewCatBtn">查看猫咪档案 →</button>
+                                    <!-- #uploadPhotoBtn "上传照片共创"按钮，JS 绑定点击触发文件选择 -->
+                                    <button class="btn btn-soft" id="uploadPhotoBtn">📷 上传照片共创</button>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+
+                    <!-- ===== 猫咪档案区域 ===== -->
+                    <!-- #catsSection 猫咪档案列表区域，也是导航"猫咪档案"按钮的滚动目标 -->
+                    <article class="panel cats-card" id="catsSection">
+                        <!-- 卡片头部 -->
+                        <div class="card-head">
+                            <div>
+                                <h3>🐾 猫咪档案</h3>
+                                <small>面向救助、领养和长期观察的数据卡片</small>
+                            </div>
+                            <small>查看全部 →</small>
                         </div>
+                        <!-- #catsFilter 筛选栏，JS 监听按钮点击过滤猫咪列表 -->
+                        <!-- data-filter 属性指定筛选类型：all=全部, adoption=可领养, neutered=已绝育 -->
+                        <div class="filter-bar" id="catsFilter">
+                            <!-- data-filter="all" 显示全部猫咪，默认激活 -->
+                            <button class="filter-chip active" type="button" data-filter="all">全部</button>
+                            <!-- data-filter="adoption" 仅显示可领养的猫咪 -->
+                            <button class="filter-chip" type="button" data-filter="adoption">可领养</button>
+                            <!-- data-filter="neutered" 仅显示已绝育的猫咪 -->
+                            <button class="filter-chip" type="button" data-filter="neutered">已绝育</button>
+                            <!-- #catsCount 筛选后的猫咪数量统计，JS 动态更新 -->
+                            <span class="filter-count" id="catsCount"></span>
+                        </div>
+                        <!-- #catsGrid 猫咪卡片网格容器，JS 动态渲染猫咪数据卡片 -->
+                        <div class="cats-grid" id="catsGrid"></div>
+                    </article>
+
+                    <!-- ===== 领养中心区域 ===== -->
+                    <!-- #adoptSection 领养中心，也是导航"领养中心"按钮的滚动目标 -->
+                    <article class="panel adopt-card" id="adoptSection">
+                        <!-- 卡片头部 -->
+                        <div class="card-head">
+                            <div>
+                                <h3>🏡 领养中心</h3>
+                                <small>让救助、绝育、领养形成温柔闭环</small>
+                            </div>
+                            <!-- #adoptNoticeBtn "领养须知"链接，JS 绑定点击弹出领养须知模态框 -->
+                            <small id="adoptNoticeBtn" style="cursor:pointer;">领养须知 →</small>
+                        </div>
+                        <!-- .adopt-stages 领养流程阶段展示 -->
+                        <div class="adopt-stages">
+                            <!-- 阶段 1：线上试养（D1-D7） -->
+                            <div class="stage-item">
+                                <div class="stage-num">1</div>
+                                <h4>线上试养</h4>
+                                <div class="stage-days">D1 - D7</div>
+                                <p class="stage-desc">每日上传进食、饮水、精神短视频；第 7 天志愿者上门初访。</p>
+                            </div>
+                            <!-- 阶段 2：月度过渡（D8-D30） -->
+                            <div class="stage-item">
+                                <div class="stage-num">2</div>
+                                <h4>月度过渡</h4>
+                                <div class="stage-days">D8 - D30</div>
+                                <p class="stage-desc">每周上传视频 + 填写行为问卷；第 30 天上门复检。</p>
+                            </div>
+                            <!-- 阶段 3：稳定期（D31-D90） -->
+                            <div class="stage-item">
+                                <div class="stage-num">3</div>
+                                <h4>稳定期</h4>
+                                <div class="stage-days">D31 - D90</div>
+                                <p class="stage-desc">每月简单反馈；第 90 天终审回访，签署《领养确认书》。</p>
+                            </div>
+                            <!-- 阶段 4：终身关怀（长期） -->
+                            <div class="stage-item">
+                                <div class="stage-num">4</div>
+                                <h4>终身关怀</h4>
+                                <div class="stage-days">长期</div>
+                                <p class="stage-desc">每年健康年报、疫苗与绝育提醒，系统自动推送。</p>
+                            </div>
+                        </div>
+                        <!-- .adopt-subhead 待领养猫咪列表标题 -->
+                        <div class="adopt-subhead">
+                            <h4>待领养猫咪</h4>
+                            <!-- #adoptCount 待领养猫咪数量统计，JS 动态更新 -->
+                            <small id="adoptCount"></small>
+                        </div>
+                        <!-- #adoptCats 待领养猫咪卡片网格，JS 动态渲染可领养猫咪列表 -->
+                        <div class="cats-grid" id="adoptCats"></div>
+                        <!-- .adopt-foot 领养底部说明和操作 -->
+                        <div class="adopt-foot">
+                            <!-- 保障金和协议说明 -->
+                            <p>💰 300 元可退还保障金，D+30 回访通过后全额退还 · 🔗 电子领养协议区块链存证</p>
+                            <!-- #adoptNoticeBtn2 "查看领养须知"按钮，JS 绑定弹出领养须知模态框 -->
+                            <button class="btn btn-primary" id="adoptNoticeBtn2">查看领养须知</button>
+                        </div>
+                    </article>
+
+                    <!-- ===== 公益参与 + 最新动态（双列网格） ===== -->
+                    <!-- #joinSection 双列网格区域，包含公益参与入口和最新动态列表 -->
+                    <div class="dual-grid" id="joinSection">
+                        <!-- .join-card 公益参与卡片 -->
+                        <article class="panel join-card">
+                            <!-- 卡片头部 -->
+                            <div class="card-head">
+                                <div>
+                                    <h3>💗 公益参与</h3>
+                                    <small>用你的行动，为流浪猫创造更好的未来</small>
+                                </div>
+                                <small>更多 →</small>
+                            </div>
+                            <!-- .join-grid 参与方式网格，每个 .join-item 代表一种参与方式 -->
+                            <div class="join-grid">
+                                <!-- data-action="feed" 投喂入口，JS 通过 data-action 识别操作类型并触发对应流程 -->
+                                <!-- role="button" tabindex="0" 无障碍属性，使 div 可被键盘聚焦和激活 -->
+                                <div class="join-item" data-action="feed" role="button" tabindex="0">
+                                    <div class="icon" style="background:var(--pink-soft);color:var(--pink-deep);">🍖</div>
+                                    <h4>我要投喂</h4>
+                                    <p>透明参与每一次守护</p>
+                                </div>
+                                <!-- data-action="adopt" 领养入口 -->
+                                <div class="join-item" data-action="adopt" role="button" tabindex="0">
+                                    <div class="icon" style="background:#fdeff1;color:#d47a95;">💞</div>
+                                    <h4>寻找领养</h4>
+                                    <p>给它一个家</p>
+                                </div>
+                                <!-- data-action="volunteer" 志愿者入口 -->
+                                <div class="join-item" data-action="volunteer" role="button" tabindex="0">
+                                    <div class="icon" style="background:var(--sage-soft);color:#6f8d6e;">🤝</div>
+                                    <h4>加入志愿者</h4>
+                                    <p>一起参与守护</p>
+                                </div>
+                            </div>
+                            <!-- .join-banner 公益宣传横幅 -->
+                            <div class="join-banner">
+                                <p>让爱心不再是一个人的事，<br>而是一群人的力量。</p>
+                            </div>
+                        </article>
                     </div>
-                </div>
-            </div>
-        </section>
 
-        <!-- ========== 失踪警报（如有） ========== -->
-        <section id="missingAlertSection">
-            <!-- 动态填充失踪警告卡片 -->
-        </section>
+                </div>
 
-        <!-- ========== 统计卡片 ========== -->
-        <div class="stats-grid">
-            <div class="stat-card primary">
-                <span class="stat-icon">🐱</span>
-                <div class="stat-info">
-                    <span class="stat-value" id="totalCats">12</span>
-                    <span class="stat-label">建档猫咪</span>
-                </div>
-            </div>
-            <div class="stat-card success">
-                <span class="stat-icon">✅</span>
-                <div class="stat-info">
-                    <span class="stat-value" id="neuteredCount">8</span>
-                    <span class="stat-label">已绝育</span>
-                </div>
-            </div>
-            <div class="stat-card warning">
-                <span class="stat-icon">⚠️</span>
-                <div class="stat-info">
-                    <span class="stat-value" id="unnuteredCount">4</span>
-                    <span class="stat-label">待绝育</span>
-                </div>
-            </div>
-            <div class="stat-card info">
-                <span class="stat-icon">🏡</span>
-                <div class="stat-info">
-                    <span class="stat-value" id="adoptedCount">5</span>
-                    <span class="stat-label">已领养</span>
-                </div>
-            </div>
-        </div>
+                <!-- ===== 右侧边栏 ===== -->
+                <!-- .right-stack.sidebar 右侧边栏堆叠区域，包含守护摘要、领养进度、人气榜 -->
+                <aside class="right-stack sidebar">
 
-        <!-- ========== 排行榜面板 ========== -->
-        <div class="info-panels">
-            <div class="info-panel" id="panelLeaderboard">
-                <div class="panel-header" onclick="togglePanel('panelLeaderboard')">
-                    <h3>🏆 猫咪人气榜</h3>
-                    <span class="panel-toggle">▼</span>
-                </div>
-                <div class="panel-content" id="panelLeaderboardContent">
-                    <div id="leaderboardList">
-                        <!-- 动态填充 -->
-                    </div>
-                </div>
-            </div>
+                    <!-- ===== 今日守护摘要卡片 ===== -->
+                    <article class="panel side-card">
+                        <!-- 卡片头部 -->
+                        <div class="card-head">
+                            <div>
+                                <h3>🌿 今日守护摘要</h3>
+                                <small>温暖感 + 数据感并存</small>
+                            </div>
+                        </div>
+                        <!-- .side-list 摘要列表 -->
+                        <div class="side-list">
+                            <!-- AI 识别状态行 -->
+                            <div class="side-row">
+                                <!-- .dot-status 状态指示圆点，绿色表示正常 -->
+                                <span class="dot-status"></span>
+                                <p>
+                                    <strong>AI 识别正常</strong><br>
+                                    <!-- #summaryAI AI 识别详细状态文本，JS 动态更新 -->
+                                    <span class="muted" id="summaryAI">正在同步识别状态…</span>
+                                </p>
+                            </div>
+                            <!-- 设备状态行 -->
+                            <div class="side-row">
+                                <span class="dot-status"></span>
+                                <p>
+                                    <strong>设备状态稳定</strong><br>
+                                    <!-- #summaryDevice 设备详细状态文本，JS 动态更新 -->
+                                    <span class="muted" id="summaryDevice">正在同步设备状态…</span>
+                                </p>
+                            </div>
+                            <!-- 健康提醒行 -->
+                            <div class="side-row">
+                                <!-- #summaryHealthDot 健康状态指示圆点，JS 根据健康数据动态改变颜色 -->
+                                <span class="dot-status" id="summaryHealthDot"></span>
+                                <p>
+                                    <!-- #summaryHealthTitle 健康提醒标题，JS 动态更新 -->
+                                    <strong id="summaryHealthTitle">健康提醒</strong><br>
+                                    <!-- #summaryHealthText 健康提醒详细文本，JS 动态更新 -->
+                                    <span class="muted" id="summaryHealthText">正在同步健康数据…</span>
+                                </p>
+                            </div>
+                        </div>
+                    </article>
 
-            <div class="info-panel" id="panelNotifications">
-                <div class="panel-header" onclick="togglePanel('panelNotifications')">
-                    <h3>🔔 消息通知</h3>
-                    <span class="panel-toggle">▼</span>
-                </div>
-                <div class="panel-content" id="panelNotificationsContent">
-                    <div id="notificationList">
-                        <!-- 动态填充 -->
-                    </div>
-                </div>
-            </div>
-        </div>
+                    <!-- ===== 领养进度卡片 ===== -->
+                    <article class="panel side-card">
+                        <!-- 卡片头部 -->
+                        <div class="card-head">
+                            <div>
+                                <h3>🏠 领养进度</h3>
+                                <small>从兴趣到稳定陪伴</small>
+                            </div>
+                        </div>
+                        <!-- #adoptTrackEmpty 空状态提示，未提交领养申请时显示 -->
+                        <p class="muted" id="adoptTrackEmpty" style="font-size:0.84rem;line-height:1.6;">提交申请后，可在此追踪领养进度。</p>
+                        <!-- #adoptTrackProgress 领养进度详情容器，默认隐藏，JS 在有领养记录时显示并渲染进度 -->
+                        <div id="adoptTrackProgress" hidden></div>
+                    </article>
+
+                    <!-- ===== 猫咪人气榜卡片 ===== -->
+                    <article class="panel side-card">
+                        <!-- 卡片头部 -->
+                        <div class="card-head">
+                            <div>
+                                <h3>🏆 猫咪人气榜</h3>
+                                <small>按累计投喂实时排序</small>
+                            </div>
+                        </div>
+                        <!-- #leaderboardList 人气榜列表容器，JS 动态渲染按投喂次数排序的猫咪列表 -->
+                        <div class="leader-list" id="leaderboardList"></div>
+                    </article>
+                    <!-- .activity-card 最新动态卡片 -->
+                        <article class="panel activity-card">
+                        <!-- 卡片头部 -->
+                        <div class="card-head">
+                             <div>
+                                 <h3>📰 最新动态</h3>
+                                <small>投喂、识别、设备运行与社区反馈</small>
+                            </div>
+                            <small>更多 →</small>
+                        </div>
+                        <!-- #activityList 动态列表容器，JS 动态渲染平台最新活动记录 -->
+                        <div class="activity-list" id="activityList"></div>
+                        <!-- 底部温暖文案 -->
+                        <div class="activity-footer">因为有你，<br>城市更温暖</div>
+                    </article>
+                </aside>
+            </section>
+                    <!-- ===== 社区共治中心区域 ===== -->
+                    <!-- #govSection 社区共治中心，也是导航"社区共治"按钮的滚动目标 -->
+                    <article class="panel gov-card" id="govSection">
+                        <!-- 卡片头部 -->
+                        <div class="card-head">
+                            <div>
+                                <h3>🏘️ 社区共治中心</h3>
+                                <!-- 治理流程说明 -->
+                                <small>投诉提交 → 治理建议 → 物业执行 → 7 天反馈 → 14 天结案</small>
+                            </div>
+                            <!-- #openReportBtn "提交投诉/建议"按钮，JS 绑定点击弹出投诉表单模态框 -->
+                            <button class="btn btn-soft btn-sm" id="openReportBtn">📝 提交投诉 / 建议</button>
+                        </div>
+                        <!-- .gov-grid 治理信息网格 -->
+                        <div class="gov-grid">
+                            <!-- 禁止清单：明确不可为的行为 -->
+                            <div class="gov-item">
+                                <div class="gov-icon">✅</div>
+                                <div>
+                                    <h4>禁止清单</h4>
+                                    <p>明确禁止私自捕捉、转移、遗弃猫咪等行为，违反者将终止服务并上报街道。</p>
+                                </div>
+                            </div>
+                            <!-- .warning 无害替代方案：带警告样式的治理建议 -->
+                            <div class="gov-item warning">
+                                <div class="gov-icon">⚠️</div>
+                                <div>
+                                    <h4>无害替代方案</h4>
+                                    <p>迁移猫屋位置、分时段投喂、加强绝育计划、安装超声波驱避器等柔性方案。</p>
+                                </div>
+                            </div>
+                            <!-- 两周闭环执行计划 -->
+                            <div class="gov-item">
+                                <div class="gov-icon">📅</div>
+                                <div>
+                                    <h4>两周闭环执行计划</h4>
+                                    <p>投诉提交 → 自动生成治理建议报告 → 物业执行 → 7 天反馈 → 14 天结案。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+
+                    <!-- ===== AI × IoT 管理概览区域 ===== -->
+                    <!-- #insightSection 管理中心，也是导航"管理中心"按钮的滚动目标 -->
+                    <article class="panel insight-card" id="insightSection">
+                        <!-- 卡片头部 -->
+                        <div class="card-head">
+                            <div>
+                                <h3>📊 AI × IoT 管理概览</h3>
+                                <small>设备、识别与治理的实时概览</small>
+                            </div>
+                            <small>本周更新</small>
+                        </div>
+                        <!-- .resource-flow 本月资源流向可视化区域 -->
+                        <div class="resource-flow">
+                            <!-- 资源流向标题和比例 -->
+                            <div class="flow-head">
+                                <strong>本月资源流向</strong>
+                                <!-- #flowRatio 资源流向比例文本，JS 动态更新 -->
+                                <span id="flowRatio">--</span>
+                            </div>
+                            <!-- .flow-bar 资源流向进度条 -->
+                            <div class="flow-bar">
+                                <!-- #flowUnneutered 未绝育猫占比段，.warn 类显示警告色（橙/红色） -->
+                                <div class="flow-seg warn" id="flowUnneutered" style="width:50%">未绝育 50%</div>
+                                <!-- #flowNeutered 已绝育猫占比段，.ok 类显示正常色（绿色） -->
+                                <div class="flow-seg ok" id="flowNeutered" style="width:50%">已绝育 50%</div>
+                            </div>
+                            <!-- .flow-legend 图例说明 -->
+                            <div class="flow-legend">
+                                <span><span class="flow-dot warn"></span>未绝育猫（优先）</span>
+                                <span><span class="flow-dot ok"></span>已绝育猫</span>
+                            </div>
+                            <!-- 科学说明：解释已绝育猫投喂策略 -->
+                            <p class="flow-note">💡 <strong>科学说明：</strong>已绝育猫已无繁殖压力，适当减少投喂可鼓励其保留自然捕食能力，更健康、更有野性。如果你想专门投喂某只已绝育猫，可使用"爱心加餐"功能。</p>
+                        </div>
+                        <!-- .insight-grid 管理数据面板网格：三个迷你面板 -->
+                        <div class="insight-grid">
+                            <!-- 设备在线状态面板 -->
+                            <div class="mini-panel">
+                                <strong>设备在线状态</strong>
+                                <!-- #insightDevice 设备状态文本，JS 动态更新 -->
+                                <p id="insightDevice">正在同步设备数据…</p>
+                            </div>
+                            <!-- AI 识别与预警面板 -->
+                            <div class="mini-panel">
+                                <strong>识别与预警</strong>
+                                <!-- #insightAI AI 识别数据文本，JS 动态更新 -->
+                                <p id="insightAI">正在同步识别数据…</p>
+                            </div>
+                            <!-- 社区治理面板 -->
+                            <div class="mini-panel">
+                                <strong>社区治理</strong>
+                                <!-- #insightGov 社区治理数据文本，JS 动态更新 -->
+                                <p id="insightGov">正在同步社区数据…</p>
+                            </div>
+                        </div>
+                    </article>
+        </main>
     </div>
 
-    <!-- ========== Toast 提示 ========== -->
-    <div class="toast" id="toast"></div>
-
-    <!-- ========== 治理报告弹窗 ========== -->
-    <div class="gov-report-modal" id="govReportModal">
-        <div class="gov-report-content">
-            <h3>📝 提交社区投诉/建议</h3>
-            <textarea id="govReportText" placeholder="请描述您遇到的问题或建议（如夜间猫叫扰民、猫群聚集等）"></textarea>
-            <div class="btn-row">
-                <button class="btn btn-secondary" onclick="closeGovReport()">取消</button>
-                <button class="btn btn-primary" onclick="submitGovReport()">提交</button>
-            </div>
+    <!-- ===== 页脚区域 ===== -->
+    <!-- .footer 页面底部，包含版权信息和导航链接 -->
+    <footer class="footer">
+        <!-- 品牌标语 -->
+        <div>猫迹 CatTrace · 用科技守护每一只流浪猫</div>
+        <!-- .footer-nav 页脚导航链接组 -->
+        <div class="footer-nav">
+            <a href="#">关于我们</a>
+            <a href="#">联系我们</a>
+            <a href="#">帮助中心</a>
+            <a href="#">隐私政策</a>
         </div>
-    </div>
+    </footer>
+</div>
 
-    <!-- ========== 分享弹窗 ========== -->
-    <div class="share-modal" id="shareModal">
-        <div class="share-modal-content">
-            <button class="share-modal-close" onclick="closeShareModal()">✕</button>
-            <div class="share-modal-header">
-                <h3>📤 分享直播间</h3>
-                <p>让更多人看到可爱的猫咪</p>
-            </div>
-            <div class="share-cat-preview">
-                <div class="share-cat-avatar">🐱</div>
-                <div class="share-cat-name">小花</div>
-                <div class="share-cat-nickname">小区明星猫</div>
-            </div>
-            <div class="share-options">
-                <div class="share-option" onclick="shareTo('wechat')">
-                    <span class="share-option-icon">💬</span>
-                    <span class="share-option-label">微信</span>
-                </div>
-                <div class="share-option" onclick="shareTo('weibo')">
-                    <span class="share-option-icon">📢</span>
-                    <span class="share-option-label">微博</span>
-                </div>
-                <div class="share-option" onclick="shareTo('copy')">
-                    <span class="share-option-icon">🔗</span>
-                    <span class="share-option-label">复制链接</span>
-                </div>
-            </div>
-            <div class="share-link-section">
-                <span class="share-link-label">直播间链接</span>
-                <div class="share-link-container">
-                    <input type="text" class="share-link-input" value="https://cattrace.app/live/123" readonly>
-                    <button class="share-link-btn" onclick="shareTo('copy')">复制</button>
-                </div>
-            </div>
-        </div>
-    </div>
+<!-- ===== 返回顶部按钮 ===== -->
+<!-- #backToTop 固定在右下角的返回顶部按钮，初始隐藏 -->
+<!-- JS 监听页面滚动，滚动超过 300px 时显示按钮，点击后平滑滚动到页面顶部 -->
+<button id="backToTop" class="back-to-top" aria-label="返回顶部">↑</button>
 
-    <!-- ========== 猫咪详情弹窗 ========== -->
-    <div class="cat-detail-modal" id="catDetailModal">
-        <div class="modal-content">
-            <button class="modal-close" onclick="closeCatDetail()">✕</button>
-            <div class="modal-body" id="catDetailBody">
-                <!-- 动态填充 -->
-            </div>
-        </div>
+<!-- ===== 全局模态框 ===== -->
+<!-- #modal 模态框遮罩层，JS 控制显示/隐藏，用于弹出各类对话框（领养须知、投诉表单等） -->
+<div class="modal" id="modal">
+    <!-- #modalCard 模态框内容卡片 -->
+    <div class="modal-card" id="modalCard">
+        <!-- #closeModalBtn 关闭按钮，JS 绑定点击关闭模态框 -->
+        <button class="modal-close" id="closeModalBtn">&times;</button>
+        <!-- #modalBody 模态框内容区域，JS 动态注入不同的 HTML 内容 -->
+        <div id="modalBody"></div>
     </div>
+</div>
 
-    <script src="/static/js/main.js"></script>
+<!-- ===== 全局 Toast 提示 ===== -->
+<!-- #toast 轻量级消息提示条，JS 通过添加 .show 类来显示/隐藏提示信息 -->
+<div class="toast" id="toast"></div>
+
+<!-- ===== 隐藏的文件上传输入框 ===== -->
+<!-- #diaryUpload 照片上传控件，accept="image/*" 限制只能选择图片文件 -->
+<!-- hidden 属性默认隐藏，JS 在用户点击"上传照片共创"按钮时触发此 input 的 click 事件 -->
+<input type="file" id="diaryUpload" accept="image/*" hidden>
+
+<!-- ===== 首页 JavaScript 逻辑 ===== -->
+<!-- home.js 包含所有首页交互逻辑：导航滚动、数据加载、猫咪档案渲染、投喂、领养、搜索、模态框等 -->
+<!-- v=cache_bust 缓存破坏参数，确保更新后加载最新版本 -->
+<script src="{{ url_for('static', filename='js/home.js', v=cache_bust) }}"></script>
 </body>
 </html>

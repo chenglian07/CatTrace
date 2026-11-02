@@ -1,0 +1,913 @@
+/* ============================================
+   猫迹 CatTrace · 首页专属样式
+   Blush & Sage 配色 — 温暖治愈 × 科技感
+   ============================================ */
+
+/* === 首页专属 CSS 变量（Design Tokens） ===
+   独立于 style.css 的变量体系，采用 Blush & Sage 配色方案
+   品牌色：粉色系（brand-pink）+ 鼠尾草绿色系（sage-green）
+   背景色：奶油白（cream-white）为主基调
+*/
+:root {
+  /* 品牌粉色系：主色 → 深色（悬停/激活）→ 浅色（背景/标签）→ 柔和色（卡片底色） */
+  --brand-pink: #d88da3;
+  --brand-pink-dark: #c8708b;
+  --brand-pink-light: #f5dce4;
+  --brand-pink-soft: #fdf5f6;
+  /* 鼠尾草绿色系：用于环境指标、辅助图标等自然感元素 */
+  --sage-green: #9fb59d;
+  --sage-green-dark: #7a947a;
+  --sage-green-light: #dde9db;
+  /* 背景/装饰色 */
+  --cream-white: #fbf7f3;       /* 页面主背景底色 */
+  --light-pink: #f5dce4;        /* 与 brand-pink-light 相同，用于通用粉色背景 */
+  --warm-beige: #efe1d2;        /* 暖米色，用于第三种图标背景变体 */
+  /* 文字色阶：深 → 正文 → 弱化 */
+  --text-dark: #4f4749;         /* 标题/强调文字 */
+  --text-body: #6b6365;         /* 正文内容 */
+  --text-muted: #9a8f92;        /* 辅助说明/时间戳 */
+  /* 卡片背景：半透明白（毛玻璃效果）/ 纯白（强对比） */
+  --card-white: rgba(255, 255, 255, 0.88);
+  --card-strong: #ffffff;
+  /* 边框 & 阴影 */
+  --border-soft: #efe4df;
+  --shadow-sm: 0 8px 24px rgba(123, 97, 101, 0.08);   /* 默认阴影 */
+  --shadow-md: 0 18px 40px rgba(123, 97, 101, 0.12);  /* 悬停加深阴影 */
+  /* 圆角体系：大圆角 → 中圆角 → 胶囊形 */
+  --radius: 28px;
+  --radius-sm: 16px;
+  --radius-pill: 999px;
+  /* 过渡动画：统一 0.25s ease 缓动 */
+  --transition: 0.25s ease;
+  /* 字体栈：系统默认字体，优先苹方/微软雅黑 */
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+/* --- 全局重置 --- */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* body：多层渐变背景叠加（左下粉色光晕 + 右上绿色光晕 + 纵向线性渐变） */
+body {
+  font-family: var(--font);
+  background:
+    radial-gradient(circle at left bottom, rgba(216,141,163,0.16), transparent 22%),
+    radial-gradient(circle at right top, rgba(159,181,157,0.14), transparent 20%),
+    linear-gradient(180deg, #fffaf8 0%, var(--cream-white) 100%);
+  color: var(--text-body);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* 链接默认样式：品牌粉色 + 悬停加深 */
+a { color: var(--brand-pink); text-decoration: none; transition: color var(--transition); }
+a:hover { color: var(--brand-pink-dark); }
+
+/* === 导航栏 ===
+   布局策略：Flex 水平三段式（品牌 Logo | 导航链接 | 操作按钮）
+   毛玻璃效果：半透明背景 + backdrop-filter blur(18px)
+   粘性定位：sticky top:0，始终悬浮在页面顶部
+*/
+.home-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  margin-bottom: 16px;
+  background: rgba(255, 250, 248, 0.78);
+  backdrop-filter: blur(18px);              /* 毛玻璃模糊 */
+  border: 1px solid rgba(239, 228, 223, 0.9);
+  border-radius: 26px;
+  box-shadow: var(--shadow-sm);
+  padding: 0 22px;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;           /* 三段式两端对齐 */
+  gap: 18px;
+}
+
+/* 品牌标识区：图标 + 文字横排 */
+.home-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: var(--brand-pink);
+}
+
+/* 品牌图标：粉色渐变背景 + 内阴影高光 */
+.home-nav-brand .brand-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #fff7f9, var(--brand-pink-light));
+  border: 1px solid #f1d5de;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);  /* 顶部内高光 */
+}
+
+/* 导航链接区：Flex 横排，允许换行 */
+.home-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 导航链接项：胶囊形悬停区域 */
+.home-nav-links a {
+  padding: 12px 16px;
+  border-radius: var(--radius-pill);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-dark);
+  transition: var(--transition);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* 链接悬停/激活态：粉色渐变背景 */
+.home-nav-links a:hover,
+.home-nav-links a.active {
+  background: linear-gradient(135deg, var(--brand-pink-light), #fff6f8);
+  color: var(--brand-pink-dark);
+}
+
+/* 操作按钮区（登录/注册） */
+.home-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 导航按钮基础样式：胶囊形 */
+.home-nav-btn {
+  padding: 12px 22px;
+  border-radius: var(--radius-pill);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  border: none;
+  font-family: var(--font);
+}
+
+/* 轮廓变体：透明底 + 粉色边框，悬停填充 */
+.home-nav-btn.outline {
+  background: transparent;
+  color: var(--brand-pink);
+  border: 1.5px solid var(--brand-pink);
+}
+
+.home-nav-btn.outline:hover {
+  background: var(--brand-pink);
+  color: #fff;
+}
+
+/* 实心变体：粉色渐变 + 阴影，悬停上浮 */
+.home-nav-btn.filled {
+  background: linear-gradient(135deg, var(--brand-pink), #e3a5b8);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(216,141,163,0.26);
+}
+
+.home-nav-btn.filled:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 28px rgba(216,141,163,0.32);
+}
+
+/* === 主内容区 === */
+.home-main {
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 20px 20px 36px;
+}
+
+/* === Hero 区域 ===
+   多层渐变背景：横向线性渐变 + 两个径向光晕 + 对角线性底色
+   伪元素装饰：::before 右上粉色光晕，::after 左下绿色光晕
+   内容居中：text-align center + z-index 提升
+*/
+.home-hero {
+  text-align: center;
+  padding: 60px 20px 50px;
+  background:
+    linear-gradient(90deg, rgba(255,248,247,0.98) 0%, rgba(255,246,245,0.95) 38%, rgba(255,255,255,0.15) 100%),
+    radial-gradient(circle at 20% 30%, rgba(216,141,163,0.16), transparent 28%),
+    radial-gradient(circle at 90% 18%, rgba(159,181,157,0.22), transparent 26%),
+    linear-gradient(135deg, #fdf5f6 0%, #f8efe9 100%);
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;                          /* 裁切伪元素光晕 */
+  border: 1px solid rgba(239, 228, 223, 0.9);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 右上粉色光晕装饰 */
+.home-hero::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(216,141,163,0.12) 0%, transparent 70%);
+}
+
+/* 左下绿色光晕装饰 */
+.home-hero::after {
+  content: '';
+  position: absolute;
+  bottom: -30%;
+  left: -5%;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(159,181,157,0.1) 0%, transparent 70%);
+}
+
+/* 内容层：提升 z-index 确保在光晕之上 */
+.home-hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* 主标题：大号粗体，负字间距增强紧凑感 */
+.home-hero h1 {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  margin-bottom: 14px;
+  letter-spacing: -0.03em;
+  line-height: 1.18;
+}
+
+/* 标题高亮词：品牌粉色 */
+.home-hero h1 .highlight {
+  color: var(--brand-pink);
+}
+
+/* 副标题：弱化文字色，限制最大宽度居中 */
+.home-hero .hero-subtitle {
+  font-size: 1rem;
+  color: var(--text-muted);
+  margin-bottom: 28px;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 操作按钮组：Flex 居中横排，允许换行 */
+.home-hero-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 24px 0 20px;
+}
+
+/* Hero 按钮基础样式：胶囊形，图标+文字横排 */
+.hero-btn {
+  padding: 13px 22px;
+  border-radius: var(--radius-pill);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  border: none;
+  font-family: var(--font);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 主按钮：粉色渐变 + 阴影，悬停上浮加深 */
+.hero-btn.primary {
+  background: linear-gradient(135deg, var(--brand-pink), #e3a5b8);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(216,141,163,0.26);
+}
+
+.hero-btn.primary:hover {
+  background: linear-gradient(135deg, var(--brand-pink-dark), var(--brand-pink));
+  transform: translateY(-2px);
+  box-shadow: 0 18px 28px rgba(216,141,163,0.32);
+}
+
+/* 次按钮：白底 + 边框，悬停变粉色边框 */
+.hero-btn.secondary {
+  background: var(--card-strong);
+  color: var(--text-dark);
+  border: 1px solid var(--border-soft);
+}
+
+.hero-btn.secondary:hover {
+  border-color: var(--brand-pink);
+  color: var(--brand-pink);
+}
+
+/* === 统计数据区 ===
+   布局策略：CSS Grid auto-fit 自适应网格，最小列宽 220px
+   卡片：Flex 横排（图标 + 数值/标签）
+*/
+.home-stats {
+  margin-bottom: 20px;
+}
+
+/* 统计网格：auto-fit 自动填充，列宽 ≥220px，均分剩余空间 */
+.home-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+/* 统计卡片：半透明白底 + 悬停上浮 + 阴影加深 */
+.home-stat-card {
+  background: var(--card-white);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: var(--transition);
+  border: 1px solid rgba(239, 228, 223, 0.9);
+}
+
+.home-stat-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+  border-color: var(--brand-pink-light);
+}
+
+/* 统计图标容器：固定 52×52 圆角方块 */
+.home-stat-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+/* 图标颜色变体：粉色（猫咪/投喂） */
+.home-stat-icon.pink {
+  background: linear-gradient(145deg, #fff7f9, var(--brand-pink-light));
+  border: 1px solid #f1d5de;
+}
+
+/* 图标颜色变体：绿色（环境/健康） */
+.home-stat-icon.green {
+  background: linear-gradient(145deg, #f0f7ef, var(--sage-green-light));
+  border: 1px solid #d4e4d2;
+}
+
+/* 图标颜色变体：米色（用户/社区） */
+.home-stat-icon.beige {
+  background: linear-gradient(145deg, #fdf8f3, var(--warm-beige));
+  border: 1px solid #f0e4d5;
+}
+
+/* 图标颜色变体：混合色（粉绿渐变，用于综合统计） */
+.home-stat-icon.mixed {
+  background: linear-gradient(135deg, var(--brand-pink-light), var(--sage-green-light));
+}
+
+/* 数值+标签：纵排 */
+.home-stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 统计数值：大号粗体 */
+.home-stat-value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  line-height: 1.2;
+}
+
+/* 统计标签：小号弱化文字 */
+.home-stat-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* === 区段标题 ===
+   Flex 横排：图标方块 + 标题文字
+*/
+.home-section-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 标题图标：36×36 圆角方块 */
+.home-section-title .title-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+/* 图标粉色变体 */
+.home-section-title .title-icon.pink {
+  background: linear-gradient(145deg, #fff7f9, var(--brand-pink-light));
+  border: 1px solid #f1d5de;
+}
+
+/* 图标绿色变体 */
+.home-section-title .title-icon.green {
+  background: linear-gradient(145deg, #f0f7ef, var(--sage-green-light));
+  border: 1px solid #d4e4d2;
+}
+
+/* === 直播间模块 ===
+   结构：视频画面区（16:9 深色背景）+ 信息区（自适应网格）
+   视频区含绝对定位的 LIVE 徽章（左上）和观看人数（右上）
+*/
+.home-live {
+  margin-bottom: 20px;
+}
+
+/* 直播卡片容器：圆角裁切 */
+.home-live-card {
+  background: var(--card-white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  border: 1px solid rgba(239, 228, 223, 0.9);
+}
+
+/* 视频画面区：16:9 比例，深色渐变背景模拟视频区域 */
+.home-live-video {
+  width: 100%;
+  min-height: 240px;
+  aspect-ratio: 16 / 9;
+  max-height: 420px;
+  background: linear-gradient(180deg, #2C2C2C 0%, #1A1A1A 40%, #252525 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 猫咪占位 emoji：半透明 + 投影 */
+.home-live-video .cat-placeholder {
+  font-size: 100px;
+  opacity: 0.6;
+  filter: drop-shadow(0 4px 20px rgba(0,0,0,0.3));
+}
+
+/* LIVE 直播徽章：左上角绝对定位，粉色半透明 + 毛玻璃 */
+.home-live-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(216,141,163,0.9);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 700;
+  backdrop-filter: blur(8px);
+}
+
+/* 脉冲圆点：白色小圆，呼吸闪烁动画 */
+.home-live-badge .pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  animation: livePulse 1.5s infinite;
+}
+
+/* 呼吸动画：透明度 1→0.3→1 循环 */
+@keyframes livePulse {
+  0%,100%{opacity:1}
+  50%{opacity:0.3}
+}
+
+/* 观看人数徽章：右上角，半透明黑底 */
+.home-live-viewers {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  backdrop-filter: blur(8px);
+}
+
+/* 直播信息区：自适应网格，最小列宽 280px */
+.home-live-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 20px;
+  padding: 20px 24px;
+  align-items: center;
+}
+
+/* 直播元信息：标题 + 位置 */
+.home-live-meta h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 4px;
+}
+
+.home-live-meta .location {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 环境指标区：Flex 横排（温度/湿度等） */
+.home-live-env {
+  display: flex;
+  gap: 16px;
+}
+
+/* 单个环境指标：纵排（数值 + 标签），奶油色背景 */
+.home-live-env-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 16px;
+  background: var(--cream-white);
+  border-radius: var(--radius-sm);
+}
+
+/* 环境数值：绿色粗体 */
+.home-live-env-item .env-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--sage-green-dark);
+}
+
+/* 环境标签：小号弱化 */
+.home-live-env-item .env-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* 投喂按钮：粉色渐变 + 阴影，悬停上浮 */
+.home-live-feed-btn {
+  padding: 14px 28px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, var(--brand-pink), #e3a5b8);
+  color: #fff;
+  border: none;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: var(--font);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 12px 24px rgba(216,141,163,0.26);
+}
+
+.home-live-feed-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 28px rgba(216,141,163,0.32);
+}
+
+/* === 猫咪日记模块 ===
+   布局策略：CSS Grid auto-fit 自适应网格，最小列宽 320px
+   卡片：头像 + 名称/日期 + 引用式正文 + 底部统计
+*/
+.home-diary {
+  margin-bottom: 20px;
+}
+
+/* 日记网格：auto-fit 自适应，列宽 ≥320px */
+.home-diary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+/* 日记卡片：半透明白底 + 悬停上浮 */
+.home-diary-card {
+  background: var(--card-white);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(239, 228, 223, 0.9);
+  transition: var(--transition);
+}
+
+.home-diary-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: var(--brand-pink-light);
+}
+
+/* 日记头部：头像 + 名称/日期 横排 */
+.home-diary-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+/* 猫咪头像：44×44 圆角方块，emoji 居中 */
+.home-diary-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+/* 头像粉色变体 */
+.home-diary-avatar.pink {
+  background: linear-gradient(145deg, #fff7f9, var(--brand-pink-light));
+  border: 1px solid #f1d5de;
+}
+
+/* 头像绿色变体 */
+.home-diary-avatar.green {
+  background: linear-gradient(145deg, #f0f7ef, var(--sage-green-light));
+  border: 1px solid #d4e4d2;
+}
+
+/* 猫咪名称 */
+.home-diary-name {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-dark);
+}
+
+/* 日期 */
+.home-diary-date {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* 日记正文：左侧粉色竖线引用样式 */
+.home-diary-text {
+  font-size: 0.92rem;
+  color: var(--text-body);
+  line-height: 1.7;
+  padding-left: 14px;
+  border-left: 3px solid var(--brand-pink-light);
+  margin-bottom: 14px;
+}
+
+/* 日记底部统计：Flex 横排，顶部分隔线 */
+.home-diary-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+
+/* 统计项：图标+文字横排 */
+.home-diary-stats span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* === 投喂记录模块 ===
+   布局：列表纵排，每条记录 Flex 横排（时间 | 用户 | 动作）
+   条目间底部分隔线，最后一条无分隔线
+*/
+.home-feed-logs {
+  margin-bottom: 20px;
+}
+
+/* 投喂记录卡片容器 */
+.home-feed-logs-card {
+  background: var(--card-white);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(239, 228, 223, 0.9);
+}
+
+/* 单条投喂记录：Flex 横排，底部分隔线 */
+.home-feed-log-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* 最后一条去掉底部分隔线 */
+.home-feed-log-item:last-child {
+  border-bottom: none;
+}
+
+/* 时间列：固定最小宽度，弱化文字 */
+.home-feed-log-time {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  min-width: 70px;
+}
+
+/* 用户名：半粗体 */
+.home-feed-log-user {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-dark);
+}
+
+/* 动作描述：正文色，其中猫咪名/食物名用品牌粉色强调 */
+.home-feed-log-action {
+  font-size: 0.88rem;
+  color: var(--text-body);
+}
+
+.home-feed-log-action strong {
+  color: var(--brand-pink);
+}
+
+/* === 页脚 ===
+   粉色背景，顶部圆角（左上+右上），底部无圆角贴边
+*/
+.home-footer {
+  background: var(--brand-pink-light);
+  padding: 32px 24px;
+  text-align: center;
+  border-radius: var(--radius) var(--radius) 0 0;  /* 仅顶部圆角 */
+}
+
+.home-footer p {
+  font-size: 0.9rem;
+  color: var(--text-body);
+  margin-bottom: 8px;
+}
+
+/* 页脚链接区：Flex 居中横排 */
+.home-footer .footer-links {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+}
+
+.home-footer .footer-links a {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.home-footer .footer-links a:hover {
+  color: var(--brand-pink);
+}
+
+/* === Toast 提示 ===
+   固定底部居中，默认隐藏（opacity:0 + pointer-events:none）
+   显示时添加 .show 类：上浮 6px + 淡入
+   过渡效果：opacity + transform 各 0.3s
+*/
+.home-toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text-dark);
+  color: #fff;
+  padding: 12px 28px;
+  border-radius: var(--radius-pill);
+  font-size: 0.92rem;
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  white-space: nowrap;
+}
+
+/* 显示状态：上浮 6px + 完全不透明 */
+.home-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-6px);
+  pointer-events: auto;
+}
+
+/* === 响应式断点 === */
+
+/* ≤1180px（小桌面/大平板）：统计网格降为 2 列，直播信息区改为单列 */
+@media (max-width: 1180px) {
+  .home-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .home-live-info {
+    grid-template-columns: 1fr;
+  }
+  .home-live-feed-btn {
+    justify-self: start;
+  }
+}
+
+/* ≤960px（平板竖屏）：Hero 缩小内边距+字号，日记网格改为单列 */
+@media (max-width: 960px) {
+  .home-hero {
+    padding: 40px 20px 36px;
+  }
+  .home-hero h1 {
+    font-size: 2.4rem;
+  }
+  .home-diary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ≤768px（手机横屏/大手机）：导航栏换行（链接区占满整行），Hero 进一步缩小，直播画面缩小 */
+@media (max-width: 768px) {
+  /* 导航栏：允许换行，链接区移至第二行居中 */
+  .home-navbar {
+    padding: 14px 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+    min-height: auto;
+  }
+  .home-nav-links {
+    order: 3;                            /* 链接区排到第三（最后） */
+    width: 100%;
+    justify-content: center;
+  }
+  .home-main {
+    padding: 14px 14px 28px;
+  }
+  .home-hero {
+    padding: 36px 16px 30px;
+  }
+  .home-hero h1 {
+    font-size: 2rem;
+  }
+  .home-hero .hero-subtitle {
+    font-size: 0.9rem;
+  }
+  /* 直播画面高度缩小，猫咪 emoji 缩小 */
+  .home-live-video {
+    min-height: 180px;
+  }
+  .home-live-video .cat-placeholder {
+    font-size: 70px;
+  }
+  .home-diary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ≤480px（手机竖屏）：统计网格 2 列紧凑，图标/数值/按钮缩小，环境指标允许换行 */
+@media (max-width: 480px) {
+  .home-stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .home-stat-card {
+    padding: 16px 14px;
+  }
+  .home-stat-icon {
+    width: 42px;
+    height: 42px;
+    font-size: 1.2rem;
+  }
+  .home-stat-value {
+    font-size: 1.4rem;
+  }
+  .hero-btn {
+    padding: 12px 20px;
+    font-size: 0.9rem;
+  }
+  /* 环境指标：空间不足时自动换行 */
+  .home-live-env {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}

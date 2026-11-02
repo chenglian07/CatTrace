@@ -1,52 +1,93 @@
+<!-- ============================================================ -->
+<!-- AI 日记页面（diary.html）                                       -->
+<!-- 功能：展示 AI 自动生成的猫咪日记时间线，支持按猫咪筛选、排序、分页 -->
+<!-- 依赖：main.js（全局工具）、diary.js（DiaryPage 模块，负责数据加载与交互） -->
+<!-- ============================================================ -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    <!-- 字符编码与视口设置 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>猫咪日记 - CatTrace</title>
+
+    <!-- 全局样式表，使用 Jinja2 url_for 生成带版本号的静态资源 URL -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=cache_bust) }}">
-    <!-- PWA -->
+
+    <!-- ============================== -->
+    <!-- PWA 相关配置                     -->
+    <!-- ============================== -->
+    <!-- Web App Manifest：定义应用图标、名称、启动方式等安装信息 -->
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <!-- PWA 主题色，影响浏览器地址栏/状态栏颜色 -->
     <meta name="theme-color" content="#ff8fb0">
+    <!-- iOS Safari PWA 支持：启用全屏 Web App 模式 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <!-- iOS Safari 状态栏样式 -->
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <!-- iOS 主屏幕显示的应用名称 -->
     <meta name="apple-mobile-web-app-title" content="CatTrace">
+    <!-- iOS 主屏幕图标（152x152） -->
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-152.png') }}">
 </head>
 <body>
+    <!-- ============================== -->
+    <!-- 顶部导航栏区块                   -->
+    <!-- 使用 navbar 类（与 adopt/cats 的 topbar 不同） -->
+    <!-- ============================== -->
     <nav class="navbar">
+        <!-- 品牌标识区域 -->
         <div class="nav-brand">
             <div>🐱 CatTrace</div>
             <div class="nav-tagline">流浪猫科学救助平台</div>
         </div>
+        <!-- 导航链接区 -->
         <div class="nav-links">
             <a href="/">🏠 首页</a>
             <a href="/cats">🐱 猫咪档案</a>
+            <!-- active 类标识当前页面，用于导航高亮 -->
             <a href="/diary" class="active">📖 日记</a>
             <a href="/adopt">🏡 领养</a>
+            <!-- 登录按钮；id="loginBtn" 由 main.js 绑定点击事件 -->
             <button id="loginBtn" class="nav-login-btn">
                 <span class="nav-text">登录</span>
             </button>
+            <!-- 深色模式切换按钮；id="darkModeToggle" 由 main.js 绑定点击事件 -->
             <button id="darkModeToggle" class="dark-mode-toggle" title="切换深色模式">🌙</button>
         </div>
     </nav>
 
+    <!-- ============================== -->
+    <!-- 页面主体内容区块                 -->
+    <!-- diary-page 类用于页面级样式区分   -->
+    <!-- ============================== -->
     <main class="main-content diary-page">
-        <!-- 页面标题 -->
+        <!-- 页面标题区域 -->
         <div class="page-header">
             <h1>📖 猫咪日记</h1>
             <p class="page-subtitle">AI 每日自动生成，记录每一只猫咪的温馨日常</p>
         </div>
 
-        <!-- 猫咪筛选标签 -->
+        <!-- ============================== -->
+        <!-- 猫咪筛选与排序栏区块             -->
+        <!-- JS: diary.js 中 DiaryPage 模块读取筛选/排序条件 -->
+        <!-- ============================== -->
         <div class="diary-filter-bar">
+            <!-- 猫咪筛选按钮组 -->
             <div class="diary-filter-group">
+                <!-- "全部猫咪"按钮；data-cat="all" 表示不按特定猫咪过滤 -->
+                <!-- active 类表示当前选中的筛选条件 -->
                 <button class="diary-filter-btn active" data-cat="all">🐾 全部猫咪</button>
+                <!-- 猫咪筛选按钮容器；diary.js 动态填充每只猫咪的筛选按钮 -->
+                <!-- 动态生成的按钮会带有 data-cat="<猫咪id>" 属性，用于 JS 筛选 -->
                 <div id="catFilterBtns">
                     <!-- 动态填充猫咪筛选按钮 -->
                 </div>
             </div>
+            <!-- 排序选择器 -->
             <div class="diary-sort-group">
+                <!-- id="diarySort"：diary.js 读取此值决定排序方式 -->
+                <!-- value 值含义：date-desc=最新优先，date-asc=最早优先，likes=最多点赞优先 -->
                 <select id="diarySort" class="diary-sort-select">
                     <option value="date-desc">📅 最新优先</option>
                     <option value="date-asc">📅 最早优先</option>
@@ -55,25 +96,44 @@
             </div>
         </div>
 
-        <!-- 日记时间线主体 -->
+        <!-- ============================== -->
+        <!-- 日记时间线主体区块               -->
+        <!-- JS: diary.js 中 DiaryPage.render() 动态渲染日记条目 -->
+        <!-- ============================== -->
+        <!-- id="diaryTimeline"：日记条目渲染的目标容器 -->
         <div class="diary-timeline" id="diaryTimeline">
+            <!-- 初始加载状态：显示加载动画和提示文字 -->
             <div class="diary-loading">
                 <div class="diary-loading-spinner"></div>
                 <p>正在翻阅猫咪日记...</p>
             </div>
         </div>
 
-        <!-- 分页 -->
+        <!-- ============================== -->
+        <!-- 分页控制区块                     -->
+        <!-- JS: DiaryPage.prevPage() / nextPage() 控制翻页 -->
+        <!-- 初始隐藏（display:none），数据加载后由 JS 控制显示 -->
+        <!-- ============================== -->
         <div class="diary-pagination" id="diaryPagination" style="display:none;">
+            <!-- 上一页按钮；id="prevPageBtn"，点击调用 DiaryPage.prevPage() -->
             <button class="btn btn-secondary diary-page-btn" id="prevPageBtn" onclick="DiaryPage.prevPage()">← 上一页</button>
+            <!-- 页码信息显示；id="pageInfo"，由 JS 动态更新为"第 N 页" -->
             <span class="diary-page-info" id="pageInfo">第 1 页</span>
+            <!-- 下一页按钮；id="nextPageBtn"，点击调用 DiaryPage.nextPage() -->
             <button class="btn btn-secondary diary-page-btn" id="nextPageBtn" onclick="DiaryPage.nextPage()">下一页 →</button>
         </div>
 
-        <!-- 日记详情弹窗 -->
+        <!-- ============================== -->
+        <!-- 日记详情弹窗区块                 -->
+        <!-- 点击日记条目时弹出，展示完整日记内容 -->
+        <!-- JS: DiaryPage.closeDetail() 关闭弹窗 -->
+        <!-- ============================== -->
+        <!-- id="diaryDetailModal"：弹窗容器，由 JS 控制显示/隐藏 -->
         <div class="diary-detail-modal" id="diaryDetailModal">
             <div class="diary-detail-content">
+                <!-- 关闭按钮；点击调用 DiaryPage.closeDetail() -->
                 <button class="diary-detail-close" onclick="DiaryPage.closeDetail()">✕</button>
+                <!-- id="diaryDetailBody"：弹窗内容容器，由 JS 动态填充日记详情 -->
                 <div class="diary-detail-body" id="diaryDetailBody">
                     <!-- 动态填充 -->
                 </div>
@@ -81,12 +141,19 @@
         </div>
     </main>
 
-    <!-- Toast -->
+    <!-- ============================== -->
+    <!-- 全局 Toast 提示元素               -->
+    <!-- id="toast"：由 main.js 中的 showToast() 控制显示 -->
+    <!-- ============================== -->
     <div class="toast" id="toast"></div>
 
+    <!-- 引入全局 JS（含 showToast、登录逻辑、深色模式等通用功能） -->
     <script src="{{ url_for('static', filename='js/main.js', v=cache_bust) }}"></script>
+    <!-- 引入日记页面专用 JS（DiaryPage 模块：数据加载、筛选、排序、分页、详情弹窗） -->
     <script src="{{ url_for('static', filename='js/diary.js', v=cache_bust) }}"></script>
     <script>
+        // 页面 DOM 加载完成后，初始化 DiaryPage 模块
+        // DiaryPage.init() 负责拉取日记数据、渲染时间线、绑定筛选/排序事件
         document.addEventListener('DOMContentLoaded', () => {
             if (typeof DiaryPage !== 'undefined') DiaryPage.init();
         });

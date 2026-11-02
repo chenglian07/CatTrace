@@ -1,568 +1,271 @@
+<!-- ============================================================ -->
+<!-- 云领养页面（adopt.html）                                       -->
+<!-- 功能：展示可领养猫咪列表、说明领养流程、提供领养申请表单         -->
+<!-- 依赖：main.js（全局工具函数）、内联脚本（页面业务逻辑）          -->
+<!-- ============================================================ -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    <!-- 字符编码与视口设置 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>领养中心 - CatTrace</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=cache_bust) }}">
-    <!-- PWA -->
-    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <meta name="theme-color" content="#ff8fb0">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="CatTrace">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-152.png') }}">
+    <title>领养中心 - 猫迹 CatTrace</title>
+
+    <!-- 全局样式表，?v= 参数用于缓存刷新（Jinja2 模板变量 cache_bust） -->
+    <link rel="stylesheet" href="/static/css/style.css?v={{ cache_bust }}">
+    <!-- PWA Web App Manifest，定义应用图标、名称等安装信息 -->
+    <link rel="manifest" href="/static/manifest.json">
+    <!-- PWA 主题色，影响浏览器地址栏/状态栏颜色 -->
+    <meta name="theme-color" content="#d88da3">
 </head>
 <body>
-    <nav class="navbar">
-        <div class="nav-brand">
-            <div>🐱 CatTrace</div>
-            <div class="nav-tagline">流浪猫科学救助平台</div>
-        </div>
-        <div class="nav-links">
-            <a href="/">🏠 首页</a>
-            <a href="/cats">🐱 猫咪档案</a>
-            <a href="/diary">📖 日记</a>
-            <a href="/adopt" class="active">🏡 领养</a>
-            <button id="loginBtn" class="nav-login-btn">
-                <span class="nav-text">登录</span>
-            </button>
-            <button id="darkModeToggle" class="dark-mode-toggle" title="切换深色模式">🌙</button>
-        </div>
-    </nav>
+    <!-- ============================== -->
+    <!-- 顶部导航栏区块                   -->
+    <!-- ============================== -->
+    <header class="topbar">
+        <!-- topbar-inner：导航栏内容容器，限制最大宽度并居中 -->
+        <div class="topbar-inner">
+            <!-- 品牌 Logo 区域，点击跳转首页 -->
+            <a href="/" class="brand" style="text-decoration:none;">
+                <div class="brand-mark">🐱</div>
+                <div class="brand-text">
+                    <strong>猫迹 CatTrace</strong>
+                    <span>城市流浪猫生命共同体</span>
+                </div>
+            </a>
 
-    <main class="main-content adopt-page">
-        <div class="page-header">
-            <h1>🏠 领养中心</h1>
-            <p class="page-subtitle">让救助、绝育、领养形成温柔闭环</p>
-        </div>
+            <!-- 主导航菜单 -->
+            <nav class="menu">
+                <a href="/" class="menu-link">首页</a>
+                <a href="/live" class="menu-link">云直播</a>
+                <a href="/cats" class="menu-link">猫咪档案</a>
+                <!-- active 类标识当前页面，用于导航高亮 -->
+                <a href="/adopt" class="menu-link active">领养中心</a>
+                <a href="/#activitySection" class="menu-link">社区共治</a>
+            </nav>
 
-        <!-- 领养流程 - 分阶段过渡计划 -->
+            <!-- 导航右侧操作区：深色模式切换 + 登录按钮 -->
+            <div class="nav-actions">
+                <!-- 深色模式切换按钮；id="darkModeToggle" 由 main.js 绑定点击事件 -->
+                <button id="darkModeToggle" class="icon-btn" aria-label="切换深色模式" style="width:40px;height:40px;font-size:1.1rem;"></button>
+                <!-- 登录按钮；id="loginBtn" 由 main.js 绑定点击事件，登录后显示用户头像 -->
+                <button id="loginBtn" class="user-chip" style="height:40px;padding:0 12px;font-size:0.85rem;">
+                    <span class="avatar" style="width:26px;height:26px;font-size:12px;">爱</span>
+                    <span>登录</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============================== -->
+    <!-- 页面主体内容区块                 -->
+    <!-- ============================== -->
+    <main class="main-content">
+        <h1 class="page-title">🏠 领养中心</h1>
+        
+        <!-- 领养中心简介文字 -->
         <div class="adopt-intro">
-            <div class="intro-card">
-                <h3>📋 分阶段领养过渡计划</h3>
-                <div class="adoption-stages">
-                    <div class="stage-item" data-stage="1">
-                        <div class="stage-icon">📱</div>
-                        <div class="stage-info">
-                            <div class="stage-name">线上试养（D1-D7）</div>
-                            <div class="stage-detail">每日上传进食、饮水、精神短视频</div>
-                            <div class="stage-volunteer">第7天：志愿者上门初访（环境安全、猫咪状态）</div>
-                        </div>
-                    </div>
-                    <div class="stage-arrow">↓</div>
-                    <div class="stage-item" data-stage="2">
-                        <div class="stage-icon">🏠</div>
-                        <div class="stage-info">
-                            <div class="stage-name">月度过渡（D8-D30）</div>
-                            <div class="stage-detail">每周上传视频 + 填写行为问卷</div>
-                            <div class="stage-volunteer">第30天：上门复检（体重、驱虫/疫苗、人猫互动）</div>
-                        </div>
-                    </div>
-                    <div class="stage-arrow">↓</div>
-                    <div class="stage-item" data-stage="3">
-                        <div class="stage-icon">✅</div>
-                        <div class="stage-info">
-                            <div class="stage-name">稳定期（D31-D90）</div>
-                            <div class="stage-detail">每月简单反馈</div>
-                            <div class="stage-volunteer">第90天：终审回访，签署《领养确认书》</div>
-                        </div>
-                    </div>
-                    <div class="stage-arrow">↓</div>
-                    <div class="stage-item" data-stage="4">
-                        <div class="stage-icon">💝</div>
-                        <div class="stage-info">
-                            <div class="stage-name">终身关怀（长期）</div>
-                            <div class="stage-detail">每年猫咪健康年报、疫苗/绝育提醒</div>
-                            <div class="stage-volunteer">系统自动推送，无需上门</div>
-                        </div>
-                    </div>
+            <p>每一只流浪猫都值得一个温暖的家。在这里，你可以找到等待领养的猫咪，也可以提交领养申请。</p>
+        </div>
+
+        <!-- ============================== -->
+        <!-- 可领养猫咪列表区块               -->
+        <!-- JS: loadAdoptableCats() 动态渲染 -->
+        <!-- ============================== -->
+        <h2 class="section-title">等待领养的猫咪</h2>
+        <!-- id="adoptableCats"：JS 中 renderAdoptableCats() 的目标容器，动态插入猫咪卡片 -->
+        <div id="adoptableCats" class="cats-grid">
+            <!-- 动态生成可领养猫咪卡片 -->
+        </div>
+
+        <!-- ============================== -->
+        <!-- 领养流程说明区块                 -->
+        <!-- 纯静态展示，四步流程卡片         -->
+        <!-- ============================== -->
+        <section class="adopt-process">
+            <h2 class="section-title">领养流程</h2>
+            <div class="process-steps">
+                <!-- 每个 process-step 代表一个流程步骤 -->
+                <div class="process-step">
+                    <div class="step-number">1</div>
+                    <h3>浏览猫咪</h3>
+                    <p>查看等待领养的猫咪信息，了解每只猫咪的性格和需求</p>
+                </div>
+                <div class="process-step">
+                    <div class="step-number">2</div>
+                    <h3>提交申请</h3>
+                    <p>填写领养申请表，包括你的居住环境和养猫经验</p>
+                </div>
+                <div class="process-step">
+                    <div class="step-number">3</div>
+                    <h3>审核面谈</h3>
+                    <p>志愿者会与你联系，进行线上或线面的面谈审核</p>
+                </div>
+                <div class="process-step">
+                    <div class="step-number">4</div>
+                    <h3>接猫回家</h3>
+                    <p>审核通过后，安排时间接猫咪回家，并提供后续支持</p>
                 </div>
             </div>
-            <div class="intro-card">
-                <h3>⚠️ 领养须知</h3>
-                <ul class="notice-list">
-                    <li>领养人需年满 18 周岁，有稳定住所和收入</li>
-                    <li>需同意为猫咪绝育、定期体检、接种疫苗</li>
-                    <li>承诺科学喂养，不虐待、不弃养</li>
-                    <li>接受领养后的定期回访（详见分阶段计划）</li>
-                    <li>如无法继续饲养，需联系平台协助重新安置</li>
-                    <li>💰 <strong>可退还保障金：</strong>领养时需支付 300 元保障金，D+30 回访通过后全额退还</li>
-                    <li>🔗 <strong>区块链存证：</strong>签署电子领养协议（含绝育条款），数据上链不可篡改</li>
-                </ul>
-            </div>
-        </div>
+        </section>
 
-        <!-- 待领养猫咪 -->
-        <div class="available-cats">
-            <h2>🐱 待领养猫咪</h2>
-            <div class="cats-grid" id="adoptCatsGrid">
-                <!-- 可领养猫咪将由 JS 动态生成 -->
-            </div>
-        </div>
-
-        <!-- 领养申请表 -->
-        <div class="application-form-section" id="formSection">
-            <div class="form-overlay" id="formOverlay"></div>
-            <div class="form-container">
-                <div class="form-handle"></div>
-                <div class="form-header">
-                    <h2>🏠 领养申请表</h2>
-                    <button class="form-close" id="formClose">&times;</button>
+        <!-- ============================== -->
+        <!-- 领养申请表单区块                 -->
+        <!-- JS: 监听 submit 事件，POST 到 /api/adopt-apply -->
+        <!-- ============================== -->
+        <section class="adopt-form-section">
+            <h2 class="section-title">领养申请</h2>
+            <!-- id="adoptForm"：JS 中监听 submit 事件并发送 AJAX 请求 -->
+            <form id="adoptForm" class="adopt-form">
+                <!-- 选择猫咪下拉框；选项由 populateCatSelect() 动态填充 -->
+                <div class="form-group">
+                    <label for="catId">选择猫咪</label>
+                    <select id="catId" name="catId" required>
+                        <option value="">请选择一只猫咪</option>
+                    </select>
                 </div>
-                <form id="adoptForm">
-                    <input type="hidden" id="selectedCatId">
-                    
-                    <div class="form-section">
-                        <h3>个人信息</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>姓名 *</label>
-                                <input type="text" id="applicantName" required>
-                            </div>
-                            <div class="form-group">
-                                <label>年龄 *</label>
-                                <input type="number" id="applicantAge" required>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>联系电话 *</label>
-                                <input type="tel" id="applicantPhone" required>
-                            </div>
-                            <div class="form-group">
-                                <label>电子邮箱</label>
-                                <input type="email" id="applicantEmail">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h3>居住情况</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>居住类型 *</label>
-                                <select id="housingType" required>
-                                    <option value="">请选择</option>
-                                    <option value="own">自有住房</option>
-                                    <option value="rent">租房</option>
-                                    <option value="dorm">宿舍</option>
-                                    <option value="family">与家人同住</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>住房面积 *</label>
-                                <select id="housingSize" required>
-                                    <option value="">请选择</option>
-                                    <option value="small"><50 平米</option>
-                                    <option value="medium">50-100 平米</option>
-                                    <option value="large">>100 平米</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>家人是否同意养宠 *</label>
-                                <select id="familyAgree" required>
-                                    <option value="">请选择</option>
-                                    <option value="yes">完全同意</option>
-                                    <option value="partial">部分同意</option>
-                                    <option value="no">不同意</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h3>养宠经验</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>是否有养宠经验 *</label>
-                                <select id="petExperience" required>
-                                    <option value="">请选择</option>
-                                    <option value="yes">有</option>
-                                    <option value="no">无</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>之前养过什么宠物</label>
-                                <input type="text" id="previousPets" placeholder="如：猫、狗等">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>养宠动机 *</label>
-                            <textarea id="adoptionReason" rows="3" required placeholder="请简述您想领养猫咪的原因..."></textarea>
-                        </div>
-                    </div>
-
-                    <!-- AI 匹配评分预览 -->
-                    <div class="form-section ai-match-section">
-                        <h3>🤖 AI 匹配评分预览</h3>
-                        <div class="ai-match-preview" id="aiMatchPreview">
-                            <p class="ai-match-placeholder">填写完信息后，AI 将自动计算您与所选猫咪的匹配度</p>
-                        </div>
-                        <div class="ai-match-bar" id="aiMatchBar" style="display:none;">
-                            <div class="ai-match-score">
-                                <span class="ai-match-label">匹配度评分</span>
-                                <span class="ai-match-value" id="aiMatchScore">--</span>
-                            </div>
-                            <div class="ai-match-progress">
-                                <div class="ai-match-fill" id="aiMatchFill" style="width:0%"></div>
-                            </div>
-                            <p class="ai-match-detail" id="aiMatchDetail"></p>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h3>承诺确认</h3>
-                        <div class="checkbox-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="agreeTerms" required>
-                                <span>我承诺以上信息真实有效，并同意遵守领养须知中的所有条款</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="agreeNeuter" required>
-                                <span>我同意为领养猫咪进行绝育手术（如尚未绝育）</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="agreeDeposit" required>
-                                <span>我知悉需支付 300 元可退还保障金，D+30 回访通过后退还</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="agreeBlockchain" required>
-                                <span>我同意签署电子领养协议，数据通过区块链存证（不可篡改）</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="button" class="btn-cancel" id="cancelBtn">取消</button>
-                        <button type="submit" class="btn-submit">提交申请</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- 领养追踪面板 -->
-        <div class="adopt-track-section">
-            <h2>📊 我的领养进度</h2>
-            <div class="adopt-track-empty" id="adoptTrackEmpty">
-                <p>提交申请后，您可以在此追踪领养进度</p>
-                <div class="adopt-track-placeholder">
-                    <div class="track-step">📱 线上试养 → 🏠 月度过渡 → ✅ 稳定期 → 💝 终身关怀</div>
+                <!-- 姓名输入 -->
+                <div class="form-group">
+                    <label for="name">姓名</label>
+                    <input type="text" id="name" name="name" required>
                 </div>
-            </div>
-            <div class="adopt-track-progress" id="adoptTrackProgress" style="display:none;">
-                <!-- 动态填充 -->
-            </div>
-        </div>
+                <!-- 联系电话输入，type=tel 触发移动端电话键盘 -->
+                <div class="form-group">
+                    <label for="phone">联系电话</label>
+                    <input type="tel" id="phone" name="phone" required>
+                </div>
+                <!-- 居住情况下拉选择 -->
+                <div class="form-group">
+                    <label for="housing">居住情况</label>
+                    <select id="housing" name="housing" required>
+                        <option value="">请选择</option>
+                        <option value="own">自有住房</option>
+                        <option value="rent">租房</option>
+                        <option value="dorm">宿舍</option>
+                    </select>
+                </div>
+                <!-- 养猫经验多行文本输入 -->
+                <div class="form-group">
+                    <label for="experience">养猫经验</label>
+                    <textarea id="experience" name="experience" rows="3" placeholder="请描述你的养猫经验..."></textarea>
+                </div>
+                <!-- 领养原因多行文本输入 -->
+                <div class="form-group">
+                    <label for="reason">领养原因</label>
+                    <textarea id="reason" name="reason" rows="3" placeholder="为什么想领养这只猫咪？"></textarea>
+                </div>
+                <!-- 提交按钮；btn-block 使按钮占满整行宽度 -->
+                <button type="submit" class="btn btn-primary btn-block">提交申请</button>
+            </form>
+        </section>
     </main>
 
-    <div class="toast" id="toast"></div>
+    <!-- ============================== -->
+    <!-- 页脚区块                         -->
+    <!-- ============================== -->
+    <footer class="footer">
+        <p>🐱 猫迹 CatTrace - 用科技守护每一只流浪猫</p>
+        <p class="footer-links">
+            <a href="#">用户协议</a> | <a href="#">隐私政策</a> | <a href="#">联系我们</a>
+        </p>
+    </footer>
 
-    <script src="{{ url_for('static', filename='js/main.js', v=cache_bust) }}"></script>
+    <!-- id="toast"：全局 Toast 提示元素，由 main.js 中的 showToast() 控制显示 -->
+    <div id="toast" class="toast"></div>
+
+    <!-- 引入全局 JS（含 showToast、登录逻辑、深色模式等通用功能） -->
+    <script src="/static/js/main.js?v={{ cache_bust }}"></script>
     <script>
-        // 注册 Service Worker
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-                navigator.serviceWorker.register('{{ url_for("static", filename="sw.js") }}')
-                    .then(function(registration) {
-                        console.log('Service Worker 注册成功:', registration.scope);
-                    })
-                    .catch(function(error) {
-                        console.log('Service Worker 注册失败:', error);
-                    });
-            });
-        }
-    </script>
-    <!-- 页面嵌套 Script -->
-    <script>
-        document.addEventListener('DOMContentLoaded', async function() {
-            const cats = await loadAdoptableCats();
+        // ==============================
+        // 页面业务逻辑
+        // ==============================
 
-            const urlParams = new URLSearchParams(window.location.search);
-            const catId = parseInt(urlParams.get('cat') || '', 10);
-            if (Number.isNaN(catId) || catId <= 0) return;
-
-            const cat = cats.find(c => c && c.id === catId);
-            if (!cat) {
-                showToast('未找到该猫咪');
-                return;
-            }
-            if (!cat.adoption_ready) {
-                showToast(getAdoptionReason(cat));
-                return;
-            }
-            openForm(catId);
-        });
-
+        // 从后端 API 加载状态为"可领养"的猫咪列表
         async function loadAdoptableCats() {
             try {
-                const response = await fetch('/api/cats');
-                const cats = await response.json();
-                const adoptableCats = cats.filter(cat => cat.adoption_ready);
-                renderAdoptableCats(adoptableCats);
-                return Array.isArray(cats) ? cats : [];
+                // 请求猫咪列表接口，status=adoptable 过滤可领养状态
+                const response = await fetch('/api/cats?status=adoptable');
+                const data = await response.json();
+                // 渲染猫咪卡片到页面
+                renderAdoptableCats(data.cats);
+                // 同时填充表单中的猫咪下拉选项
+                populateCatSelect(data.cats);
             } catch (error) {
-                console.error('加载可领养猫咪失败:', error);
-                return [];
+                showToast('加载可领养猫咪失败', 'error');
             }
         }
 
-        function getCatEmoji(color) {
-            if (!color) return '🐱';
-            const lower = color.toLowerCase();
-            if (lower.includes('橘') || lower.includes('橙')) return '🐱';
-            if (lower.includes('黑')) return '🐈';
-            if (lower.includes('白')) return '🐱';
-            if (lower.includes('三花') || lower.includes('玳瑁')) return '🐱';
-            if (lower.includes('灰') || lower.includes('蓝')) return '🐈';
-            return '🐱';
-        }
-
-        function getAdoptionReason(cat) {
-            if (cat.neutered === false) return '该猫咪尚未绝育，暂不可领养';
-            if (cat.health && cat.health.includes('病')) return '该猫咪健康状况不佳，暂不可领养';
-            return '该猫咪暂不可领养';
-        }
-
+        // 将可领养猫咪渲染为卡片列表，插入 #adoptableCats 容器
         function renderAdoptableCats(cats) {
-            const grid = document.getElementById('adoptCatsGrid');
+            const container = document.getElementById('adoptableCats');
+            // 空列表提示
             if (cats.length === 0) {
-                grid.innerHTML = '<p class="no-cats">暂无可领养的猫咪，请关注后续更新~</p>';
+                container.innerHTML = '<p class="no-data">目前没有可领养的猫咪，请稍后再来查看。</p>';
                 return;
             }
-            grid.innerHTML = cats.map(cat => `
-                <div class="cat-card adopt-card">
-                    <div class="cat-card-image">
-                        <div class="cat-avatar large">${getCatEmoji(cat.color)}</div>
-                        <div class="cat-status-badge adoption">🏠 可领养</div>
-                    </div>
+            // 使用模板字符串生成卡片 HTML；每张卡片包含头像、名称、位置、描述和申请按钮
+            container.innerHTML = cats.map(cat => `
+                <div class="cat-card">
+                    <!-- 猫咪头像：背景色取 cat.color，默认粉色；emoji 取 cat.emoji，默认猫脸 -->
+                    <div class="cat-card-avatar" style="background:${cat.color || '#d88da3'}">${cat.emoji || '🐱'}</div>
                     <div class="cat-card-info">
-                        <h3 class="cat-name">${cat.name}</h3>
-                        <p class="cat-nickname">"${cat.nickname || ''}"</p>
-                        <div class="cat-tags">
-                            <span class="tag">${cat.gender === 'female' ? '♀' : '♂'} ${cat.age || '未知'}</span>
-                            <span class="tag color">${cat.color || '未知毛色'}</span>
-                            ${cat.neutered ? '<span class="tag neutered">已绝育</span>' : '<span class="tag not-neutered">未绝育</span>'}
-                        </div>
-                        <p class="cat-description">${cat.description || '暂无简介'}</p>
-                        <!-- AI 性格画像 -->
-                        <div class="cat-personality">
-                            <h4>🤖 AI 性格画像</h4>
-                            <p>${getPersonality(cat)}</p>
-                        </div>
-                        <div class="adopt-meta">
-                            <span>📍 ${cat.location || '未知位置'}</span>
-                            <span>📊 已喂 ${cat.feed_count || 0} 次</span>
-                        </div>
-                        <div class="cat-health-brief">
-                            <span>🩺 ${cat.health || '健康状态未知'}</span>
-                        </div>
-                        <button class="adopt-apply-btn" onclick="openForm(${cat.id})">📝 申请领养</button>
-                        <p class="deposit-note">💰 需支付 300 元可退还保障金</p>
+                        <h3>${cat.name}</h3>
+                        <p>📍 ${cat.location}</p>
+                        <p>${cat.description || '等待你的领养'}</p>
+                        <!-- 点击"申请领养"：滚动到表单并自动选中该猫咪 -->
+                        <button class="btn btn-primary" onclick="selectCat('${cat.id}')">申请领养</button>
                     </div>
                 </div>
             `).join('');
         }
 
-        // AI 性格画像生成（模拟）
-        function getPersonality(cat) {
-            const personalities = ['粘人精，喜欢蹭蹭', '独立自主，有自己的小世界', '活泼好动，精力充沛', '温柔安静，适合陪伴', '吃货一枚，对食物充满热情', '社恐但会偷偷观察你'];
-            const idx = (cat.id * 7) % personalities.length;
-            return personalities[idx];
+        // 将猫咪数据填充到表单的"选择猫咪"下拉框（#catId）中
+        function populateCatSelect(cats) {
+            const select = document.getElementById('catId');
+            cats.forEach(cat => {
+                const option = document.createElement('option');
+                // option 的 value 为猫咪 id，提交表单时作为 catId 字段发送
+                option.value = cat.id;
+                option.textContent = cat.name;
+                select.appendChild(option);
+            });
         }
 
-        function openForm(catId) {
-            document.getElementById('selectedCatId').value = catId;
-            document.getElementById('formSection').classList.add('show');
-            document.body.style.overflow = 'hidden';
-            
-            // AI 匹配评分预览
-            updateAiMatchPreview(catId);
+        // 点击卡片上的"申请领养"按钮时调用：选中对应猫咪并平滑滚动到表单
+        function selectCat(catId) {
+            document.getElementById('catId').value = catId;
+            // 平滑滚动到领养申请表单区域
+            document.getElementById('adoptForm').scrollIntoView({ behavior: 'smooth' });
         }
 
-        function closeForm() {
-            document.getElementById('formSection').classList.remove('show');
-            document.body.style.overflow = '';
-            document.getElementById('adoptForm').reset();
-            // 隐藏 AI 匹配
-            document.getElementById('aiMatchPreview').style.display = 'block';
-            document.getElementById('aiMatchBar').style.display = 'none';
-        }
-
-        document.getElementById('formClose').addEventListener('click', closeForm);
-        document.getElementById('formOverlay').addEventListener('click', closeForm);
-        document.getElementById('cancelBtn').addEventListener('click', closeForm);
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeForm();
-            }
-        });
-
-        // 实时更新 AI 匹配评分
-        function updateAiMatchPreview(catId) {
-            const reason = document.getElementById('adoptionReason');
-            const housingType = document.getElementById('housingType');
-            const petExperience = document.getElementById('petExperience');
+        // 监听领养表单提交事件，通过 AJAX 发送申请数据到后端
+        document.getElementById('adoptForm').addEventListener('submit', async (e) => {
+            e.preventDefault(); // 阻止表单默认刷新行为
+            // 将表单字段转为普通对象
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData);
             
-            function calculateMatch() {
-                let score = 50; // 基础分
-                
-                // 动机分析
-                const reasonText = reason.value.toLowerCase();
-                if (reasonText.includes('陪伴') || reasonText.includes('爱')) score += 15;
-                if (reasonText.includes('救助') || reasonText.includes('流浪')) score += 10;
-                if (reasonText.includes('责任')) score += 5;
-                
-                // 居住条件
-                if (housingType.value === 'own') score += 10;
-                if (housingType.value === 'family') score += 5;
-                
-                // 养宠经验
-                if (petExperience.value === 'yes') score += 10;
-                
-                score = Math.min(score, 98);
-                score = Math.max(score, 20);
-                
-                return score;
-            }
-            
-            function renderMatch() {
-                const score = calculateMatch();
-                const preview = document.getElementById('aiMatchPreview');
-                const bar = document.getElementById('aiMatchBar');
-                const scoreEl = document.getElementById('aiMatchScore');
-                const fill = document.getElementById('aiMatchFill');
-                const detail = document.getElementById('aiMatchDetail');
-                
-                const hasInput = reason.value.trim() || housingType.value || petExperience.value;
-                
-                if (hasInput) {
-                    preview.style.display = 'none';
-                    bar.style.display = 'block';
-                    scoreEl.textContent = score + '/100';
-                    fill.style.width = score + '%';
-                    
-                    if (score >= 80) {
-                        fill.style.background = '#4CAF50';
-                        detail.textContent = '✨ 匹配度优秀！您很可能是理想的领养人';
-                    } else if (score >= 60) {
-                        fill.style.background = '#FF9800';
-                        detail.textContent = '👍 匹配度良好，建议完善养宠知识储备';
-                    } else {
-                        fill.style.background = '#F44336';
-                        detail.textContent = '📚 匹配度较低，建议先学习养宠知识或参与云养猫';
-                    }
-                } else {
-                    preview.style.display = 'block';
-                    bar.style.display = 'none';
-                }
-            }
-            
-            reason.addEventListener('input', renderMatch);
-            housingType.addEventListener('change', renderMatch);
-            petExperience.addEventListener('change', renderMatch);
-        }
-
-        document.getElementById('adoptForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const catId = parseInt(document.getElementById('selectedCatId').value);
-            const applicant = {
-                name: document.getElementById('applicantName').value,
-                age: document.getElementById('applicantAge').value,
-                phone: document.getElementById('applicantPhone').value,
-                email: document.getElementById('applicantEmail').value,
-                housingType: document.getElementById('housingType').value,
-                housingSize: document.getElementById('housingSize').value,
-                familyAgree: document.getElementById('familyAgree').value,
-                petExperience: document.getElementById('petExperience').value,
-                previousPets: document.getElementById('previousPets').value,
-                adoptionReason: document.getElementById('adoptionReason').value
-            };
-
             try {
-                const response = await fetch('/api/adopt/apply', {
+                // POST 请求发送到领养申请接口
+                const response = await fetch('/api/adopt-apply', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ cat_id: catId, applicant: applicant })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
                 });
                 
-                const result = await response.json();
-                if (result.success) {
-                    showToast('✅ ' + result.message + '。请等待审核，通过后将进入分阶段领养过渡计划。');
-                    closeForm();
-                    // 刷新追踪面板
-                    loadAdoptionProgress();
+                if (response.ok) {
+                    showToast('领养申请已提交，我们会尽快联系你！', 'success');
+                    e.target.reset(); // 提交成功后清空表单
                 } else {
-                    showToast('❌ ' + (result.message || '提交失败'));
+                    showToast('申请提交失败，请稍后重试', 'error');
                 }
             } catch (error) {
-                console.error('提交申请失败:', error);
-                showToast('提交失败，请稍后重试');
+                showToast('网络错误，请稍后重试', 'error');
             }
         });
 
-        // 领养进度追踪
-        async function loadAdoptionProgress() {
-            try {
-                const response = await fetch('/api/adopt/status');
-                const status = await response.json();
-                
-                const emptyEl = document.getElementById('adoptTrackEmpty');
-                const progressEl = document.getElementById('adoptTrackProgress');
-                
-                if (status && status.stage) {
-                    emptyEl.style.display = 'none';
-                    progressEl.style.display = 'block';
-                    
-                    const stages = [
-                        { name: '线上试养', days: 'D1-D7', icon: '📱', key: 'trial' },
-                        { name: '月度过渡', days: 'D8-D30', icon: '🏠', key: 'transition' },
-                        { name: '稳定期', days: 'D31-D90', icon: '✅', key: 'stable' },
-                        { name: '终身关怀', days: '长期', icon: '💝', key: 'lifetime' }
-                    ];
-                    
-                    const currentStageIdx = stages.findIndex(s => s.key === status.stage);
-                    
-                    progressEl.innerHTML = `
-                        <div class="track-cat-info">
-                            <span class="track-cat-icon">🐱</span>
-                            <span>领养猫咪：<strong>${status.cat_name || '未知'}</strong></span>
-                            <span class="track-status">当前阶段：${stages[currentStageIdx]?.icon || ''} ${stages[currentStageIdx]?.name || status.stage}</span>
-                        </div>
-                        <div class="track-steps">
-                            ${stages.map((stage, idx) => `
-                                <div class="track-step-item ${idx < currentStageIdx ? 'completed' : idx === currentStageIdx ? 'active' : ''}">
-                                    <div class="track-step-dot">${idx < currentStageIdx ? '✅' : stage.icon}</div>
-                                    <div class="track-step-name">${stage.name}</div>
-                                    <div class="track-step-days">${stage.days}</div>
-                                </div>
-                            `).join('')}
-                        </div>
-                        ${status.deposit_refunded !== undefined ? `
-                        <div class="track-deposit">
-                            💰 保障金状态：${status.deposit_refunded ? '✅ 已退还' : '⏳ 待D+30回访后退还（300元）'}
-                        </div>
-                        ` : ''}
-                        ${status.blockchain_tx ? `
-                        <div class="track-blockchain">
-                            🔗 区块链存证：<a href="https://etherscan.io/tx/${status.blockchain_tx}" target="_blank">查看上链记录</a>
-                        </div>
-                        ` : ''}
-                    `;
-                }
-            } catch (error) {
-                console.log('未登录或领养状态加载失败:', error.message);
-            }
-        }
-
-        // 页面加载时检查领养进度
-        loadAdoptionProgress();
+        // 页面加载完成后，拉取可领养猫咪数据
+        loadAdoptableCats();
     </script>
 </body>
 </html>

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """一条命令把「带真实摄像头的网页」跑起来。
 
 省掉手抄三个 CATTRACE_* 环境变量的步骤，并在启动前先探一次树莓派，告诉你到底通没通。
@@ -61,9 +60,9 @@ def probe(url: str, timeout: float = 3.0):
     req = urllib.request.Request(url, headers={"User-Agent": "CatTrace-serve-live/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return True, "HTTP %s" % resp.status, resp.read(4_000_000)
+            return True, f"HTTP {resp.status}", resp.read(4_000_000)
     except urllib.error.HTTPError as exc:
-        return False, "HTTP %s" % exc.code, b""
+        return False, f"HTTP {exc.code}", b""
     except urllib.error.URLError as exc:
         return False, str(exc.reason), b""
     except OSError as exc:
@@ -79,27 +78,28 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="预检失败也启动（默认就会启动）")
     args = ap.parse_args()
 
-    base = "http://%s:%d" % (args.pi, args.camera_port)
+    base = f"http://{args.pi}:{args.camera_port}"
 
-    print("==> 预检摄像头节点 %s" % base)
+    print(f"==> 预检摄像头节点 {base}")
     stats_ok, stats_msg, stats_raw = probe(base + "/stats")
     snap_ok, snap_msg, snap_raw = probe(base + "/snapshot.jpg")
 
     if stats_ok:
         try:
             stats = json.loads(stats_raw.decode("utf-8"))
-            print("    /stats      OK   判定=%s  p_cat=%s  已推 %s 帧  推流 %.1f fps"
-                  % (stats.get("verdict"), stats.get("p_cat"),
-                     stats.get("stream_frames"), stats.get("stream_fps") or 0))
+            print(
+                f"    /stats      OK   判定={stats.get('verdict')}  p_cat={stats.get('p_cat')}"
+                f"  已推 {stats.get('stream_frames')} 帧  推流 {stats.get('stream_fps') or 0:.1f} fps"
+            )
         except Exception:
-            print("    /stats      OK   但返回不是 JSON：%s" % stats_msg)
+            print(f"    /stats      OK   但返回不是 JSON：{stats_msg}")
     else:
-        print("    /stats      失败 %s" % stats_msg)
+        print(f"    /stats      失败 {stats_msg}")
 
     if snap_ok and snap_raw[:3] == b"\xff\xd8\xff":
-        print("    /snapshot   OK   %d 字节 JPEG" % len(snap_raw))
+        print(f"    /snapshot   OK   {len(snap_raw)} 字节 JPEG")
     else:
-        print("    /snapshot   失败 %s" % ("不是 JPEG" if snap_ok else snap_msg))
+        print(f"    /snapshot   失败 {'不是 JPEG' if snap_ok else snap_msg}")
 
     if not (stats_ok and snap_ok):
         print()
@@ -108,7 +108,7 @@ def main() -> int:
         print("   1. 树莓派上的服务没起来： systemctl --user status catvision-camera")
         print("   2. 两台设备不在同一个网络：树莓派上 `hostname -I` 看 IP 是不是同一网段")
         print("   3. 手机热点开了「客户端隔离」：热点里两台设备互 ping 不通，改用网线或 Tailscale")
-        print("   4. 树莓派防火墙挡了 %d： sudo ufw allow %d/tcp" % (args.camera_port, args.camera_port))
+        print(f"   4. 树莓派防火墙挡了 {args.camera_port}： sudo ufw allow {args.camera_port}/tcp")
         print()
 
     os.environ["CATTRACE_LIVE_URL"] = base + "/stream"
@@ -122,9 +122,9 @@ def main() -> int:
     lan = local_lan_ip()
     print()
     print("==> 网页已就绪")
-    print("    本机：  http://127.0.0.1:%d/live" % args.port)
+    print(f"    本机：  http://127.0.0.1:{args.port}/live")
     if args.host == "0.0.0.0":
-        print("    手机：  http://%s:%d/live   （同一局域网）" % (lan, args.port))
+        print(f"    手机：  http://{lan}:{args.port}/live   （同一局域网）")
     print("    退出：  Ctrl+C")
     print()
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
